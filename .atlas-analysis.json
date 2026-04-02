@@ -1,23 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Lottie for iOS",
+  "projectType": "sdk-library",
+  "projectName": "Lottie for iOS",
+  "projectDescription": "A cross-platform Swift library that natively renders After Effects vector animations exported as Bodymovin JSON on iOS, macOS, tvOS, and visionOS.",
   "theme": "willow",
-  "colors": {
-    "primary": "#08a4a2",
-    "light": "#7dcfcf",
-    "dark": "#e7eeee"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/airbnb/lottie-ios"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/airbnb/lottie-ios"
-    }
-  },
+  "primaryColor": "#08a4a2",
+  "lightColor": "#7dcfcf",
+  "darkColor": "#e7eeee",
   "navigation": {
     "tabs": [
       {
@@ -96,5 +84,45 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Native rendering of After Effects animations via Bodymovin JSON",
+    "SwiftUI support via LottieView wrapper",
+    "UIKit support via LottieAnimationView (UIView subclass)",
+    "Core Animation and Main Thread dual rendering engines",
+    "Dynamic property modification at runtime (colors, positions, keyframe values)",
+    ".lottie (DotLottie) compressed file format support",
+    "Playback control: play, pause, loop, scrub, reverse, markers",
+    "Animated UIControls: LottieButton and LottieSwitch",
+    "Custom image, text, and font providers",
+    "Reduced motion accessibility support",
+    "Animation caching for performance"
+  ],
+  "publicApiSurface": [
+    "LottieAnimationView",
+    "LottieView (SwiftUI)",
+    "LottieAnimationLayer",
+    "LottieAnimation",
+    "LottiePlaybackMode",
+    "LottieLoopMode",
+    "LottieConfiguration",
+    "LottieBackgroundBehavior",
+    "AnimationKeypath",
+    "ColorValueProvider",
+    "FloatValueProvider",
+    "GradientValueProvider",
+    "PointValueProvider",
+    "SizeValueProvider",
+    "DotLottieFile",
+    "DotLottieConfiguration",
+    "LottieButton",
+    "LottieSwitch",
+    "AnimationImageProvider",
+    "AnimationKeypathTextProvider",
+    "AnimationFontProvider",
+    "LottieAnimationCache",
+    "RenderingEngineOption",
+    "ReducedMotionOption",
+    "DecodingStrategy"
+  ]
 }

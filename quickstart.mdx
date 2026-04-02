@@ -1,80 +1,186 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick Start"
+description: "Play your first Lottie animation in minutes using UIKit or SwiftUI."
 ---
 
-## Get started in three steps
+This guide walks you through loading and playing a Lottie animation from your app bundle. Choose the tab that matches your UI framework.
 
-Get your documentation site running locally and make your first customization.
+<Steps>
+  <Step title="Install Lottie">
+    Follow the [Installation](/installation) guide to add Lottie to your project, then import it:
 
-### Step 1: Set up your local environment
+    ```swift
+    import Lottie
+    ```
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Add an animation file to your project">
+    Drag a `.json` (Bodymovin) or `.lottie` (DotLottie) animation file into your Xcode project. Make sure **Copy items if needed** is checked and the file is added to your app target so it ends up in the main bundle.
 
-### Step 2: Deploy your changes
+    <Tip>
+      Free animations are available at [LottieFiles](https://lottiefiles.com). Download any animation as a `.json` file and drop it straight into your Xcode project.
+    </Tip>
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+  <Step title="Display the animation">
+    Pick the approach for your UI framework below.
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    <Tabs>
+      <Tab title="UIKit">
+        `LottieAnimationView` is a `UIView` subclass decorated with `@IBDesignable`, so you can use it in code or in Interface Builder.
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+        ```swift
+        import UIKit
+        import Lottie
 
-### Step 3: Go live
+        class ViewController: UIViewController {
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+            override func viewDidLoad() {
+                super.viewDidLoad()
 
-## Next steps
+                // 1. Load the animation from the main bundle by file name (no extension needed).
+                //    Returns nil if the file is not found — handle that case in production code.
+                guard let animation = LottieAnimation.named("MyAnimation") else { return }
 
-Now that you have your docs running, explore these key features:
+                // 2. Create the animation view with the loaded animation.
+                let animationView = LottieAnimationView(animation: animation)
+                animationView.translatesAutoresizingMaskIntoConstraints = false
 
-<CardGroup cols={2}>
+                // 3. Configure playback behavior.
+                animationView.loopMode = .loop      // loop continuously
+                animationView.animationSpeed = 1.0  // normal speed
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+                // 4. Add to the view hierarchy and constrain it.
+                view.addSubview(animationView)
+                NSLayoutConstraint.activate([
+                    animationView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                    animationView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+                    animationView.widthAnchor.constraint(equalToConstant: 300),
+                    animationView.heightAnchor.constraint(equalToConstant: 300),
+                ])
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+                // 5. Start playback.
+                animationView.play { finished in
+                    // Called when the animation stops.
+                    // `finished` is false if the animation was interrupted.
+                    print("Animation finished: \(finished)")
+                }
+            }
+        }
+        ```
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+        <Note>
+          `LottieAnimation.named(_:bundle:subdirectory:animationCache:)` looks for the file in `Bundle.main` by default and caches the decoded model in `LottieAnimationCache.shared`. Subsequent calls with the same name return the cached animation with no disk I/O.
+        </Note>
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+        **Playing between specific progress values:**
 
-</CardGroup>
+        ```swift
+        // Play from 0% to 50% once, then call the completion block.
+        animationView.play(fromProgress: 0, toProgress: 0.5, loopMode: .playOnce) { _ in
+            print("First half done")
+        }
+        ```
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+        **Scrubbing manually:**
+
+        ```swift
+        // Jump to the midpoint without playing.
+        animationView.currentProgress = 0.5
+        ```
+      </Tab>
+
+      <Tab title="SwiftUI">
+        `LottieView` is the SwiftUI wrapper around `LottieAnimationView`. The async closure initializer loads the animation the first time the view appears, keeping your UI responsive.
+
+        ```swift
+        import SwiftUI
+        import Lottie
+
+        struct ContentView: View {
+            var body: some View {
+                LottieView {
+                    // This closure runs asynchronously on first appear.
+                    // LottieAnimation.named(_:) is synchronous but inexpensive for
+                    // cached or small files. Wrap in Task.detached for large files.
+                    LottieAnimation.named("MyAnimation")
+                } placeholder: {
+                    ProgressView()
+                }
+                .playing(loopMode: .loop)  // loop continuously
+                .resizable()              // scale to fill the offered space
+                .frame(width: 300, height: 300)
+            }
+        }
+        ```
+
+        If you have already loaded a `LottieAnimation` synchronously (e.g., at app launch), pass it directly without the async closure:
+
+        ```swift
+        struct ContentView: View {
+            let animation: LottieAnimation?
+
+            var body: some View {
+                LottieView(animation: animation)
+                    .playing(loopMode: .loop)
+                    .resizable()
+                    .frame(width: 300, height: 300)
+            }
+        }
+        ```
+
+        **Common `LottieView` modifiers:**
+
+        | Modifier | Description |
+        |----------|-------------|
+        | `.playing()` | Play once from the current frame to the end. |
+        | `.playing(loopMode:)` | Play with the specified `LottieLoopMode`. |
+        | `.looping()` | Convenience — loop continuously from start to end. |
+        | `.paused(at:)` | Pause at a specific frame or progress. |
+        | `.resizable()` | Scale the animation to fill the proposed size. |
+        | `.intrinsicSize()` | Use the animation's natural size, up to the proposed size. |
+        | `.animationSpeed(_:)` | Multiply the playback speed. |
+
+        <Note>
+          The `LottieView` async closure is called exactly once in `onAppear`. To reload the animation at a different time (e.g., after a network fetch), use the `.reloadAnimationTrigger(_:)` modifier.
+        </Note>
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## Loop modes
+
+Control repetition with `LottieLoopMode`, used by both `LottieAnimationView` and `LottieView`:
+
+```swift
+animationView.loopMode = .playOnce           // play once and stop (default)
+animationView.loopMode = .loop               // loop from start to end indefinitely
+animationView.loopMode = .autoReverse        // play forward then backward, indefinitely
+animationView.loopMode = .repeat(3)          // loop exactly 3 times
+animationView.loopMode = .repeatBackwards(2) // forward + backward, 2 times
+```
+
+## Choosing a rendering engine
+
+Lottie defaults to the Core Animation engine, which has zero CPU overhead during playback. Switch engines via `LottieConfiguration`:
+
+```swift
+// Core Animation (default) — runs on the render server, zero CPU overhead.
+let animationView = LottieAnimationView(
+    animation: animation,
+    configuration: LottieConfiguration(renderingEngine: .coreAnimation)
+)
+
+// Main Thread — required for features Core Animation cannot express.
+let animationView = LottieAnimationView(
+    animation: animation,
+    configuration: LottieConfiguration(renderingEngine: .mainThread)
+)
+```
+
+Set the global default so every new `LottieAnimationView` inherits it:
+
+```swift
+LottieConfiguration.shared = LottieConfiguration(renderingEngine: .coreAnimation)
+```

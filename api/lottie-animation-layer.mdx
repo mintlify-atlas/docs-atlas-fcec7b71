@@ -1,0 +1,799 @@
+---
+title: "LottieAnimationLayer"
+description: "CALayer subclass for rendering Lottie animations"
+---
+
+`LottieAnimationLayer` is a `CALayer` subclass that renders Lottie animations at the Core Animation layer level. It is the rendering core that powers both [`LottieAnimationView`](/api/lottie-animation-view) (which wraps it in a `UIView`) and [`LottieView`](/api/lottie-view) (which wraps it in a SwiftUI view).
+
+Use `LottieAnimationLayer` directly when you need CALayer-level control — for example:
+- Embedding Lottie animations in a custom `CALayer` hierarchy
+- Compositing animations into `AVVideoComposition`
+- Rendering into custom `CGContext` draws or `MTKView` pipelines
+- Building reusable layer-based components outside the UIView system
+
+<Note>
+  For most UIKit use cases, prefer [`LottieAnimationView`](/api/lottie-animation-view). For SwiftUI, use [`LottieView`](/api/lottie-view). Use `LottieAnimationLayer` only when you specifically require a `CALayer` interface.
+</Note>
+
+```swift
+import Lottie
+import QuartzCore
+
+let animation = LottieAnimation.named("burst")!
+let animationLayer = LottieAnimationLayer(animation: animation)
+animationLayer.frame = CGRect(x: 0, y: 0, width: 200, height: 200)
+animationLayer.loopMode = .loop
+parentLayer.addSublayer(animationLayer)
+animationLayer.play()
+```
+
+---
+
+## Differences from `LottieAnimationView`
+
+| Feature | `LottieAnimationLayer` | `LottieAnimationView` |
+|---|---|---|
+| Base class | `CALayer` | `UIView` (via `LottieAnimationViewBase`) |
+| Layout system | Manual `frame` / `bounds` | Auto Layout + `contentMode` |
+| Background handling | Manual (`updateAnimationForBackgroundState`) | Automatic via `UIApplication` notifications |
+| Window lifecycle | Not applicable | Automatic via `didMoveToWindow` |
+| SwiftUI wrapping | Not directly | Via `LottieView` |
+| Use case | Custom layer hierarchies, off-screen rendering | Standard UIKit view trees |
+
+`LottieAnimationLayer` exposes the same playback API as `LottieAnimationView`. All `play(...)`, `stop()`, `pause()`, `setValueProvider(...)`, and marker methods are identical in behavior — `LottieAnimationView` delegates directly to its internal `LottieAnimationLayer` instance.
+
+---
+
+## Initializers
+
+### `init(animation:imageProvider:textProvider:fontProvider:configuration:logger:)`
+
+Initializes a `LottieAnimationLayer` with a pre-loaded `LottieAnimation`. The layer's `frame` is automatically set to the animation's native bounds.
+
+```swift
+let animation = LottieAnimation.named("ripple")!
+let layer = LottieAnimationLayer(
+  animation: animation,
+  configuration: LottieConfiguration(renderingEngine: .coreAnimation)
+)
+layer.frame = animation.bounds
+parentLayer.addSublayer(layer)
+```
+
+<ParamField path="animation" type="LottieAnimation?" required>
+  The `LottieAnimation` to render. Pass `nil` to create an empty layer; assign the `animation` property later.
+</ParamField>
+
+<ParamField path="imageProvider" type="AnimationImageProvider?" default="BundleImageProvider(bundle: .main, searchPath: nil)">
+  Supplies image assets referenced by the animation.
+</ParamField>
+
+<ParamField path="textProvider" type="AnimationKeypathTextProvider" default="DefaultTextProvider()">
+  Supplies runtime values for text layers.
+</ParamField>
+
+<ParamField path="fontProvider" type="AnimationFontProvider" default="DefaultFontProvider()">
+  Supplies fonts for text layers.
+</ParamField>
+
+<ParamField path="configuration" type="LottieConfiguration" default=".shared">
+  Controls rendering engine selection and other global options.
+</ParamField>
+
+<ParamField path="logger" type="LottieLogger" default=".shared">
+  Logger for warnings and assertions. Immutable after initialization.
+</ParamField>
+
+---
+
+### `init(dotLottie:animationId:textProvider:fontProvider:configuration:logger:)`
+
+Initializes a `LottieAnimationLayer` from a pre-loaded `DotLottieFile`. Loop mode and animation speed are automatically read from the file's embedded configuration.
+
+```swift
+DotLottieFile.named("confetti") { result in
+  guard case .success(let file) = result else { return }
+  let layer = LottieAnimationLayer(
+    dotLottie: file,
+    animationId: nil
+  )
+  layer.frame = CGRect(origin: .zero, size: CGSize(width: 400, height: 400))
+  parentLayer.addSublayer(layer)
+  layer.play()
+}
+```
+
+<ParamField path="dotLottie" type="DotLottieFile?" required>
+  The `.lottie` file to display.
+</ParamField>
+
+<ParamField path="animationId" type="String?" default="nil">
+  The ID of the specific animation within the file. Defaults to the first animation.
+</ParamField>
+
+<ParamField path="textProvider" type="AnimationKeypathTextProvider" default="DefaultTextProvider()">
+  Supplies runtime text values.
+</ParamField>
+
+<ParamField path="fontProvider" type="AnimationFontProvider" default="DefaultFontProvider()">
+  Supplies fonts for text layers.
+</ParamField>
+
+<ParamField path="configuration" type="LottieConfiguration" default=".shared">
+  Rendering engine configuration.
+</ParamField>
+
+<ParamField path="logger" type="LottieLogger" default=".shared">
+  Logger for warnings and assertions.
+</ParamField>
+
+---
+
+### `init(configuration:logger:)`
+
+Creates an empty `LottieAnimationLayer` with no animation. Assign the `animation` property or call `loadAnimation(_:from:)` later.
+
+```swift
+let layer = LottieAnimationLayer(
+  configuration: LottieConfiguration(renderingEngine: .automatic)
+)
+// Assign later:
+layer.animation = LottieAnimation.named("placeholder")
+```
+
+<ParamField path="configuration" type="LottieConfiguration" default=".shared">
+  Rendering engine configuration.
+</ParamField>
+
+<ParamField path="logger" type="LottieLogger" default=".shared">
+  Logger for warnings and assertions.
+</ParamField>
+
+---
+
+## Properties
+
+### Animation
+
+<ParamField path="animation" type="LottieAnimation?">
+  The `LottieAnimation` currently loaded. Setting this clears the current state, rebuilds the animation layer, and fires the `animationLoaded` closure.
+</ParamField>
+
+<ParamField path="animationLayer" type="CALayer?">
+  The underlying `CALayer` created by the rendering engine. Use this property to apply `CALayer` transforms (such as `transform`, `anchorPoint`, or `opacity`) to the rendered content.
+</ParamField>
+
+<ParamField path="animationLoaded" type="((LottieAnimationLayer, LottieAnimation) -> Void)?">
+  Called when `self.animation` is loaded and applied. Fires immediately if `animation` is already non-`nil` at the time this closure is set.
+
+  ```swift
+  layer.animationLoaded = { layer, animation in
+    layer.play()
+  }
+  ```
+</ParamField>
+
+<ParamField path="animationLayerDidLoad" type="((LottieAnimationLayer, RenderingEngineOption) -> Void)?">
+  Called after the internal rendering layer (`MainThreadAnimationLayer` or `CoreAnimationLayer`) is constructed. The second argument indicates which rendering engine is in use.
+</ParamField>
+
+### Playback State
+
+<ParamField path="currentProgress" type="AnimationProgressTime">
+  Normalized playback position (0.0–1.0). Setting this stops the current animation and seeks to the corresponding frame. Falls back to `0` if no animation is loaded.
+</ParamField>
+
+<ParamField path="currentFrame" type="AnimationFrameTime">
+  Current frame in the animation's native framerate. Setting this stops the current animation.
+</ParamField>
+
+<ParamField path="currentTime" type="TimeInterval">
+  Current playback position in seconds. Setting this stops the current animation.
+</ParamField>
+
+<ParamField path="realtimeAnimationFrame" type="AnimationFrameTime">
+  The live frame number as reported by the layer's presentation layer. Reflects mid-animation values while playing.
+</ParamField>
+
+<ParamField path="realtimeAnimationProgress" type="AnimationProgressTime">
+  Normalized live progress derived from `realtimeAnimationFrame`.
+</ParamField>
+
+<ParamField path="isAnimationPlaying" type="Bool">
+  `true` if an animation is actively playing. Read-only.
+</ParamField>
+
+<ParamField path="currentPlaybackMode" type="LottiePlaybackMode?">
+  The last playback mode applied. Read-only (`public private(set) var`).
+</ParamField>
+
+### Playback Configuration
+
+<ParamField path="loopMode" type="LottieLoopMode" default=".playOnce">
+  Loop behavior used by `play(...)` calls. Changing this while an animation is playing triggers an in-flight update.
+  - `.playOnce` — plays once then stops
+  - `.loop` — loops continuously
+  - `.autoReverse` — forward then backward, looping
+  - `.repeat(Float)` — fixed number of loops
+  - `.repeatBackwards(Float)` — forward-then-backward a fixed number of times
+</ParamField>
+
+<ParamField path="animationSpeed" type="CGFloat" default="1">
+  Playback speed multiplier. Negative values play in reverse. Changing this while an animation is playing triggers an in-flight update.
+</ParamField>
+
+<ParamField path="respectAnimationFrameRate" type="Bool" default="false">
+  When `true`, renders at the animation's embedded framerate. When `false`, renders at the device's display refresh rate.
+</ParamField>
+
+### Rendering
+
+<ParamField path="configuration" type="LottieConfiguration">
+  Rendering configuration. Changing `renderingEngine` rebuilds the internal animation layer.
+</ParamField>
+
+<ParamField path="currentRenderingEngine" type="RenderingEngine?">
+  The active rendering engine (`.mainThread` or `.coreAnimation`). `nil` in `.automatic` mode before the first frame renders.
+</ParamField>
+
+<ParamField path="backgroundBehavior" type="LottieBackgroundBehavior">
+  Behavior when the application moves to the background. Unlike `LottieAnimationView`, this is **not** applied automatically — you must call `updateAnimationForBackgroundState()` and `updateAnimationForForegroundState(wasWaitingToPlayAnimation:)` manually from your own lifecycle management code.
+
+  Valid values: `.stop`, `.pause`, `.pauseAndRestore`, `.forceFinish`, `.continuePlaying`.
+
+  <Warning>
+    Using `.continuePlaying` with the Main Thread rendering engine wastes CPU when the animation is not visible and will trigger an assertion in debug builds.
+  </Warning>
+</ParamField>
+
+<ParamField path="screenScale" type="CGFloat" default="1">
+  The display scale factor for the rendering layer. When embedding in a `UIView`, this is set automatically by `LottieAnimationView`. When using `LottieAnimationLayer` directly, set this to `UIScreen.main.scale` (or `UITraitCollection.current.displayScale`) for crisp rendering on high-DPI displays.
+</ParamField>
+
+<ParamField path="shouldRasterizeWhenIdle" type="Bool" default="false">
+  Rasterizes the layer's output to a bitmap when not animating. Can improve performance for complex static frames.
+</ParamField>
+
+<ParamField path="maskAnimationToBounds" type="Bool" default="true">
+  Clips the rendered content to the layer's bounds.
+</ParamField>
+
+<ParamField path="mainThreadRenderingEngineShouldForceDisplayUpdateOnEachFrame" type="Bool" default="false">
+  Forces a full display update on every frame in the Main Thread engine, bypassing internal optimizations. Only use as a workaround for specific rendering bugs.
+</ParamField>
+
+### Asset Providers
+
+<ParamField path="imageProvider" type="AnimationImageProvider">
+  Supplies image assets. Setting this reloads all images.
+</ParamField>
+
+<ParamField path="textProvider" type="AnimationKeypathTextProvider">
+  Supplies runtime text values for text layers.
+</ParamField>
+
+<ParamField path="fontProvider" type="AnimationFontProvider">
+  Supplies fonts for text layers.
+</ParamField>
+
+<ParamField path="valueProviders" type="[AnimationKeypath: AnyValueProvider]">
+  Registered value providers. Read-only (`public private(set) var`).
+</ParamField>
+
+---
+
+## Methods
+
+### Playback
+
+The playback API is identical to `LottieAnimationView`. All play methods delegate to the internal rendering engine.
+
+#### `play(completion:)`
+
+Plays from the current position to the end, using the current `loopMode`.
+
+```swift
+animationLayer.play { completed in
+  print("Finished: \(completed)")
+}
+```
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when the animation stops. `true` if it played to completion.
+</ParamField>
+
+---
+
+#### `play(fromProgress:toProgress:loopMode:completion:)`
+
+Plays between two normalized progress values.
+
+```swift
+animationLayer.play(fromProgress: 0, toProgress: 0.5, loopMode: .loop)
+```
+
+<ParamField path="fromProgress" type="AnimationProgressTime?" default="nil">
+  Start progress. `nil` uses the current position.
+</ParamField>
+
+<ParamField path="toProgress" type="AnimationProgressTime" required>
+  End progress (0.0–1.0).
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode?" default="nil">
+  Loop behavior. `nil` uses the layer's `loopMode`.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when the animation stops.
+</ParamField>
+
+---
+
+#### `play(fromFrame:toFrame:loopMode:completion:)`
+
+Plays between two frame numbers.
+
+```swift
+animationLayer.play(fromFrame: 10, toFrame: 45, loopMode: .playOnce)
+```
+
+<ParamField path="fromFrame" type="AnimationFrameTime?" default="nil">
+  Start frame. `nil` uses the current frame.
+</ParamField>
+
+<ParamField path="toFrame" type="AnimationFrameTime" required>
+  End frame.
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode?" default="nil">
+  Loop behavior.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when the animation stops.
+</ParamField>
+
+---
+
+#### `play(fromMarker:toMarker:playEndMarkerFrame:loopMode:completion:)`
+
+Plays between two named markers. Exits if either marker is not found.
+
+```swift
+animationLayer.play(
+  fromMarker: "section_a_start",
+  toMarker: "section_a_end",
+  playEndMarkerFrame: true,
+  loopMode: .loop
+)
+```
+
+<ParamField path="fromMarker" type="String?" default="nil">
+  Start marker name. `nil` starts from the current progress.
+</ParamField>
+
+<ParamField path="toMarker" type="String" required>
+  End marker name.
+</ParamField>
+
+<ParamField path="playEndMarkerFrame" type="Bool" default="true">
+  Whether the frame at `toMarker` is included in playback.
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode?" default="nil">
+  Loop behavior.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when the animation stops.
+</ParamField>
+
+---
+
+#### `play(marker:loopMode:completion:)`
+
+Plays for the duration of a single named marker.
+
+```swift
+animationLayer.play(marker: "pulse", loopMode: .loop)
+```
+
+<ParamField path="marker" type="String" required>
+  The marker name. Exits if not found.
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode?" default="nil">
+  Loop behavior.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when done.
+</ParamField>
+
+---
+
+#### `play(markers:completion:)`
+
+Plays a sequence of markers in order.
+
+```swift
+animationLayer.play(markers: ["intro", "main", "outro"])
+```
+
+<ParamField path="markers" type="[String]" required>
+  Ordered list of marker names. Markers not found in the animation are skipped.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called after all markers complete or the sequence is cancelled.
+</ParamField>
+
+---
+
+#### `setPlaybackMode(_:completion:)`
+
+Applies a `LottiePlaybackMode` directly. Supports both playing and paused states.
+
+```swift
+// Play with loop
+animationLayer.setPlaybackMode(
+  .playing(.fromProgress(0, toProgress: 1, loopMode: .loop))
+)
+
+// Pause at the midpoint
+animationLayer.setPlaybackMode(.paused(at: .progress(0.5)))
+```
+
+<ParamField path="playbackMode" type="LottiePlaybackMode" required>
+  The playback mode to apply.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when an animation triggered by this method completes.
+</ParamField>
+
+---
+
+#### `pause()`
+
+Pauses at the current frame. The completion block is called with `false`.
+
+---
+
+#### `pause(at:)`
+
+Pauses at a specific state.
+
+```swift
+animationLayer.pause(at: .progress(0.75))
+animationLayer.pause(at: .frame(42))
+animationLayer.pause(at: .time(1.5))
+animationLayer.pause(at: .marker("loop_start", position: .start))
+```
+
+<ParamField path="state" type="LottiePlaybackMode.PausedState" required>
+  One of `.currentFrame`, `.progress(_:)`, `.frame(_:)`, `.time(_:)`, or `.marker(_:position:)`.
+</ParamField>
+
+---
+
+#### `stop()`
+
+Stops the animation and resets to frame 0. The completion block is called with `false`.
+
+---
+
+### Dynamic Value Providers
+
+#### `setValueProvider(_:keypath:)`
+
+Registers a value provider for all properties matching the keypath. Applied immediately to the animation and persisted across animation layer rebuilds.
+
+```swift
+let fillKeypath = AnimationKeypath(keypath: "**.Fill 1.Color")
+let blueProvider = ColorValueProvider(LottieColor(r: 0, g: 0.4, b: 1, a: 1))
+animationLayer.setValueProvider(blueProvider, keypath: fillKeypath)
+```
+
+<ParamField path="valueProvider" type="AnyValueProvider" required>
+  The provider to register.
+</ParamField>
+
+<ParamField path="keypath" type="AnimationKeypath" required>
+  The keypath to match. Use `**` as a wildcard.
+</ParamField>
+
+---
+
+#### `removeValueProvider(for:)`
+
+Removes all registered providers matching the keypath.
+
+<ParamField path="keypath" type="AnimationKeypath" required>
+  The keypath whose providers should be removed.
+</ParamField>
+
+---
+
+#### `getValue(for:atFrame:)`
+
+Returns the current value of an animation property at a given frame. Only supported by the Main Thread rendering engine; always returns `nil` with the Core Animation engine.
+
+<ParamField path="for" type="AnimationKeypath" required>
+  The property keypath.
+</ParamField>
+
+<ParamField path="atFrame" type="AnimationFrameTime?" required>
+  The frame to query. `nil` uses the current frame.
+</ParamField>
+
+---
+
+#### `getOriginalValue(for:atFrame:)`
+
+Returns the animation's original value for a property, ignoring any registered value providers.
+
+<ParamField path="for" type="AnimationKeypath" required>
+  The property keypath.
+</ParamField>
+
+<ParamField path="atFrame" type="AnimationFrameTime?" required>
+  The frame to query. `nil` uses the current frame.
+</ParamField>
+
+---
+
+### Loading
+
+#### `loadAnimation(_:from:)`
+
+Replaces the current animation with one from a `DotLottieFile`, by ID.
+
+<ParamField path="animationId" type="String?" default="nil">
+  The animation ID. `nil` loads the first animation in the file.
+</ParamField>
+
+<ParamField path="dotLottieFile" type="DotLottieFile" required>
+  The `.lottie` file to load from.
+</ParamField>
+
+---
+
+#### `loadAnimation(atIndex:from:)`
+
+Replaces the current animation with one from a `DotLottieFile`, by zero-based index.
+
+<ParamField path="index" type="Int" required>
+  The zero-based index of the animation within the file.
+</ParamField>
+
+<ParamField path="dotLottieFile" type="DotLottieFile" required>
+  The `.lottie` file to load from.
+</ParamField>
+
+---
+
+### Utilities
+
+#### `reloadImages()`
+
+Forces the animation to re-request all image assets from the current `imageProvider`.
+
+---
+
+#### `forceDisplayUpdate()`
+
+Triggers a full re-render of the animation on the next display pass.
+
+---
+
+#### `logHierarchyKeypaths()`
+
+Logs all available keypaths to the `LottieLogger`. Useful during development to discover which keypaths can be targeted by value providers.
+
+---
+
+#### `allHierarchyKeypaths() -> [String]`
+
+Returns all child keypaths in the current animation as an array of strings.
+
+---
+
+#### `setNodeIsEnabled(isEnabled:keypath:)`
+
+Shows or hides parts of the animation by enabling or disabling animator nodes matching the keypath.
+
+```swift
+animationLayer.setNodeIsEnabled(
+  isEnabled: false,
+  keypath: AnimationKeypath(keypath: "Shadow Layer")
+)
+```
+
+<ParamField path="isEnabled" type="Bool" required>
+  `true` to include the node in rendering; `false` to remove it.
+</ParamField>
+
+<ParamField path="keypath" type="AnimationKeypath" required>
+  The keypath identifying the node(s).
+</ParamField>
+
+---
+
+### Background Lifecycle
+
+Unlike `LottieAnimationView`, `LottieAnimationLayer` does **not** automatically handle app background/foreground transitions. You must call these methods manually from your own lifecycle hooks.
+
+#### `updateAnimationForBackgroundState(backgroundBehavior:)`
+
+Applies the configured `backgroundBehavior` when your app moves to the background.
+
+```swift
+NotificationCenter.default.addObserver(
+  forName: UIApplication.didEnterBackgroundNotification,
+  object: nil,
+  queue: .main
+) { _ in
+  animationLayer.updateAnimationForBackgroundState()
+}
+```
+
+<ParamField path="backgroundBehavior" type="LottieBackgroundBehavior?" default="nil">
+  Override for the layer's `backgroundBehavior`. `nil` uses the layer's current value.
+</ParamField>
+
+---
+
+#### `updateAnimationForForegroundState(wasWaitingToPlayAnimation:backgroundBehavior:)`
+
+Restores the animation when the app returns to the foreground.
+
+```swift
+NotificationCenter.default.addObserver(
+  forName: UIApplication.willEnterForegroundNotification,
+  object: nil,
+  queue: .main
+) { _ in
+  animationLayer.updateAnimationForForegroundState(wasWaitingToPlayAnimation: false)
+}
+```
+
+<ParamField path="wasWaitingToPlayAnimation" type="Bool" required>
+  Pass `true` if the animation was queued to play but hadn't yet started (e.g., it was added before being attached to a display).
+</ParamField>
+
+<ParamField path="backgroundBehavior" type="LottieBackgroundBehavior?" default="nil">
+  Override for the layer's `backgroundBehavior`. `nil` uses the layer's current value.
+</ParamField>
+
+---
+
+### Coordinate Conversion
+
+#### `convert(_:toLayerAt:)` (CGRect)
+
+Converts a `CGRect` into the coordinate space of a named layer.
+
+<ParamField path="rect" type="CGRect" required>
+  The rectangle to convert (in this layer's coordinate space).
+</ParamField>
+
+<ParamField path="toLayerAt" type="AnimationKeypath?" required>
+  Target layer keypath. `nil` converts to the root animation layer.
+</ParamField>
+
+---
+
+#### `convert(_:toLayerAt:)` (CGPoint)
+
+Converts a `CGPoint` into the coordinate space of a named layer.
+
+---
+
+### Markers
+
+#### `progressTime(forMarker:) -> AnimationProgressTime?`
+
+Returns the normalized progress for a named marker, or `nil` if not found.
+
+#### `frameTime(forMarker:) -> AnimationFrameTime?`
+
+Returns the frame number for a named marker.
+
+#### `durationFrameTime(forMarker:) -> AnimationFrameTime?`
+
+Returns the duration (in frames) of a named marker.
+
+---
+
+## Complete Example
+
+<Steps>
+
+### Embed in a custom CALayer hierarchy
+
+```swift
+import Lottie
+import UIKit
+
+final class BadgeLayer: CALayer {
+
+  private let animationLayer: LottieAnimationLayer
+
+  init(animation: LottieAnimation) {
+    animationLayer = LottieAnimationLayer(
+      animation: animation,
+      configuration: LottieConfiguration(renderingEngine: .coreAnimation)
+    )
+    super.init()
+
+    animationLayer.screenScale = UIScreen.main.scale
+    animationLayer.loopMode = .loop
+    animationLayer.frame = animation.bounds
+    addSublayer(animationLayer)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+  override init(layer: Any) { 
+    animationLayer = LottieAnimationLayer(configuration: .shared)
+    super.init(layer: layer)
+  }
+
+  func startAnimating() {
+    animationLayer.play()
+  }
+
+  func stopAnimating() {
+    animationLayer.stop()
+  }
+}
+```
+
+### Handle app lifecycle manually
+
+```swift
+final class MyLayerController {
+  let animationLayer: LottieAnimationLayer
+
+  init() {
+    let animation = LottieAnimation.named("ambient")!
+    animationLayer = LottieAnimationLayer(
+      animation: animation,
+      configuration: LottieConfiguration(renderingEngine: .coreAnimation)
+    )
+    animationLayer.backgroundBehavior = .pauseAndRestore
+    animationLayer.loopMode = .loop
+
+    NotificationCenter.default.addObserver(
+      forName: UIApplication.didEnterBackgroundNotification,
+      object: nil, queue: .main
+    ) { [weak self] _ in
+      self?.animationLayer.updateAnimationForBackgroundState()
+    }
+
+    NotificationCenter.default.addObserver(
+      forName: UIApplication.willEnterForegroundNotification,
+      object: nil, queue: .main
+    ) { [weak self] _ in
+      self?.animationLayer.updateAnimationForForegroundState(
+        wasWaitingToPlayAnimation: false
+      )
+    }
+  }
+
+  func start() {
+    animationLayer.play()
+  }
+}
+```
+
+### Override colors at the layer level
+
+```swift
+let keypath = AnimationKeypath(keypath: "**.Stroke.Color")
+let color = LottieColor(r: 0.1, g: 0.8, b: 0.4, a: 1.0)
+animationLayer.setValueProvider(ColorValueProvider(color), keypath: keypath)
+```
+
+</Steps>

@@ -1,0 +1,206 @@
+---
+title: "Playback control"
+description: "Control animation playback, looping, and scrubbing"
+---
+
+`LottieAnimationView` exposes a rich set of APIs for controlling how your animations play, loop, and scrub.
+
+## Basic playback
+
+### play
+
+Play from the current position to the end of the animation.
+
+```swift
+// Play to the end, then stop
+animationView.play()
+
+// Play with a completion handler
+animationView.play { completed in
+  if completed {
+    print("Animation finished")
+  }
+}
+```
+
+### stop
+
+Stop the animation and reset the current frame back to the start of the current play range. The completion block is called with `false`.
+
+```swift
+animationView.stop()
+```
+
+### pause
+
+Pause the animation at its current frame. The completion block is called with `false`.
+
+```swift
+animationView.pause()
+```
+
+## Loop mode
+
+Set `loopMode` to control how the animation behaves after it reaches the end. This property is used as the default for all `play(...)` calls that do not specify a loop mode explicitly.
+
+```swift
+animationView.loopMode = .loop
+```
+
+| Value | Description |
+|---|---|
+| `.playOnce` | Plays once and stops (default) |
+| `.loop` | Loops from start to end indefinitely |
+| `.autoReverse` | Plays forward, then backward, continuously |
+| `.repeat(Float)` | Loops a fixed number of times |
+| `.repeatBackwards(Float)` | Plays forward then backward a fixed number of times |
+
+```swift
+// Play 3 times then stop
+animationView.loopMode = .repeat(3)
+
+// Play forward and backward 2 times
+animationView.loopMode = .repeatBackwards(2)
+```
+
+## Progress and frame scrubbing
+
+Setting any of these properties stops any active animation and jumps the view to the specified position.
+
+```swift
+// Seek to 50% through the animation (0.0 – 1.0)
+animationView.currentProgress = 0.5
+
+// Seek to a specific frame
+animationView.currentFrame = 42
+
+// Seek to a specific time in seconds
+animationView.currentTime = 1.2
+```
+
+To read the position while an animation is actively playing, use the realtime variants:
+
+```swift
+let liveProgress: AnimationProgressTime = animationView.realtimeAnimationProgress
+let liveFrame: AnimationFrameTime = animationView.realtimeAnimationFrame
+```
+
+## Playback speed
+
+```swift
+// Play at half speed
+animationView.animationSpeed = 0.5
+
+// Play at double speed
+animationView.animationSpeed = 2.0
+```
+
+## Checking playback state
+
+```swift
+if animationView.isAnimationPlaying {
+  print("Animation is playing")
+}
+```
+
+## Playing a range
+
+### By progress
+
+```swift
+// Play from 0% to 50%
+animationView.play(fromProgress: 0, toProgress: 0.5, loopMode: .playOnce)
+
+// Play from the current position to 100%
+animationView.play(fromProgress: nil, toProgress: 1, loopMode: .loop)
+```
+
+### By frame
+
+```swift
+// Play frames 10 through 60
+animationView.play(fromFrame: 10, toFrame: 60, loopMode: .playOnce)
+```
+
+### By markers
+
+Markers are named timestamps encoded into the animation JSON by the designer. They let you drive playback by name rather than by frame number, so your code stays correct even if the animation file is updated.
+
+```swift
+// Play from the "intro_start" marker to the "intro_end" marker
+animationView.play(fromMarker: "intro_start", toMarker: "intro_end")
+
+// Play the full duration of a single marker
+animationView.play(marker: "idle", loopMode: .loop)
+
+// Play a sequence of markers in order
+animationView.play(markers: ["walk", "run", "stop"])
+```
+
+<Note>
+If a named marker is not found in the animation data, the play command exits immediately without playing anything.
+</Note>
+
+## Background behavior
+
+`backgroundBehavior` controls what happens when your app moves to the background.
+
+```swift
+animationView.backgroundBehavior = .pauseAndRestore
+```
+
+| Value | Description |
+|---|---|
+| `.stop` | Stops the animation and resets to the start of the play range |
+| `.pause` | Pauses at the current frame |
+| `.pauseAndRestore` | Pauses and resumes when the app returns to the foreground (default for Main Thread engine) |
+| `.forceFinish` | Stops and jumps to the end of the play range |
+| `.continuePlaying` | Keeps playing in the background (default for Core Animation engine) |
+
+## The modern playback API — LottiePlaybackMode
+
+`LottiePlaybackMode` is the unified enum that describes any playback or paused state. Use `setPlaybackMode(_:completion:)` on `LottieAnimationView` to apply it.
+
+```swift
+// Pause at the current frame
+animationView.setPlaybackMode(.paused)
+
+// Pause at a specific progress value
+animationView.setPlaybackMode(.paused(at: .progress(0.25)))
+
+// Pause at a specific frame
+animationView.setPlaybackMode(.paused(at: .frame(30)))
+
+// Pause at the start of a named marker
+animationView.setPlaybackMode(.paused(at: .marker("intro_end", position: .start)))
+
+// Play from 0 to 1, looping
+animationView.setPlaybackMode(
+  .playing(.fromProgress(0, toProgress: 1, loopMode: .loop))
+)
+
+// Play from a marker to another marker, once
+animationView.setPlaybackMode(
+  .playing(.fromMarker("intro_start", toMarker: "intro_end", loopMode: .playOnce))
+)
+```
+
+### PausedState values
+
+| Case | Description |
+|---|---|
+| `.currentFrame` | Pauses at whatever frame is currently displayed |
+| `.progress(_:)` | Pauses at a progress value between 0.0 and 1.0 |
+| `.frame(_:)` | Pauses at a specific frame number |
+| `.time(_:)` | Pauses at a time in seconds from the animation start |
+| `.marker(_:position:)` | Pauses at the start or end of a named marker |
+
+### PlaybackMode values
+
+| Case | Description |
+|---|---|
+| `.fromProgress(_:toProgress:loopMode:)` | Plays between two progress values |
+| `.fromFrame(_:toFrame:loopMode:)` | Plays between two frame values |
+| `.fromMarker(_:toMarker:playEndMarkerFrame:loopMode:)` | Plays between two named markers |
+| `.marker(_:loopMode:)` | Plays for the duration of one named marker |
+| `.markers(_:)` | Plays a sequence of named markers |

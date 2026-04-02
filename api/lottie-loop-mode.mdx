@@ -1,0 +1,127 @@
+---
+title: "LottieLoopMode"
+description: "Defines animation loop and repeat behavior"
+---
+
+`LottieLoopMode` controls how a playing animation repeats. It is used as a parameter to `LottiePlaybackMode.PlaybackMode` cases.
+
+```swift
+public enum LottieLoopMode: Hashable, Equatable {
+  case playOnce
+  case loop
+  case autoReverse
+  case `repeat`(Float)
+  case repeatBackwards(Float)
+}
+```
+
+## Cases
+
+<ResponseField name=".playOnce" type="LottieLoopMode">
+  The animation plays from the start to the end a single time, then stops. The completion block is called when it finishes.
+</ResponseField>
+
+<ResponseField name=".loop" type="LottieLoopMode">
+  The animation loops continuously from the beginning to the end until explicitly stopped. The completion block is never called.
+</ResponseField>
+
+<ResponseField name=".autoReverse" type="LottieLoopMode">
+  The animation plays forward to the end, then plays backward to the start, and repeats indefinitely. The completion block is never called.
+</ResponseField>
+
+<ResponseField name=".repeat(Float)" type="LottieLoopMode">
+  The animation loops from the beginning to the end a specific number of times, then stops. The completion block is called after the final loop completes.
+</ResponseField>
+
+<ResponseField name=".repeatBackwards(Float)" type="LottieLoopMode">
+  The animation plays forward then backward, repeating that cycle a specific number of times, then stops. The completion block is called after the final cycle.
+</ResponseField>
+
+---
+
+## Usage examples
+
+<CodeGroup>
+
+```swift Play once
+animationView.playbackMode = .playing(
+  .fromProgress(0, toProgress: 1, loopMode: .playOnce)
+)
+```
+
+```swift Loop indefinitely
+animationView.playbackMode = .playing(
+  .fromProgress(0, toProgress: 1, loopMode: .loop)
+)
+```
+
+```swift Auto-reverse loop
+animationView.playbackMode = .playing(
+  .fromProgress(0, toProgress: 1, loopMode: .autoReverse)
+)
+```
+
+```swift Repeat 3 times
+animationView.playbackMode = .playing(
+  .fromProgress(0, toProgress: 1, loopMode: .repeat(3))
+)
+```
+
+```swift Repeat backwards 2 times
+animationView.playbackMode = .playing(
+  .fromProgress(0, toProgress: 1, loopMode: .repeatBackwards(2))
+)
+```
+
+</CodeGroup>
+
+---
+
+## Equatable conformance
+
+`LottieLoopMode` conforms to both `Hashable` and `Equatable`. The `.repeat(Float)` and `.repeatBackwards(Float)` cases compare their associated `Float` values; the other cases compare by identity.
+
+```swift
+extension LottieLoopMode: Equatable {
+  public static func ==(lhs: LottieLoopMode, rhs: LottieLoopMode) -> Bool {
+    switch (lhs, rhs) {
+    case (.repeat(let lhsAmount), .repeat(let rhsAmount)),
+         (.repeatBackwards(let lhsAmount), .repeatBackwards(let rhsAmount)):
+      lhsAmount == rhsAmount
+    case (.playOnce, .playOnce),
+         (.loop, .loop),
+         (.autoReverse, .autoReverse):
+      true
+    default:
+      false
+    }
+  }
+}
+```
+
+```swift
+LottieLoopMode.loop == LottieLoopMode.loop            // true
+LottieLoopMode.repeat(3) == LottieLoopMode.repeat(3)  // true
+LottieLoopMode.repeat(3) == LottieLoopMode.repeat(5)  // false
+LottieLoopMode.loop == LottieLoopMode.playOnce        // false
+```
+
+<Note>
+  Because `LottieLoopMode` is `Hashable`, it can be used as a dictionary key or stored in a `Set`.
+</Note>
+
+---
+
+## Choosing a loop mode
+
+| Mode | Loops? | Direction | Stops automatically? |
+|---|---|---|---|
+| `.playOnce` | No | Forward | Yes |
+| `.loop` | Yes (∞) | Forward | No |
+| `.autoReverse` | Yes (∞) | Forward → Backward | No |
+| `.repeat(n)` | Yes (n times) | Forward | Yes |
+| `.repeatBackwards(n)` | Yes (n cycles) | Forward → Backward | Yes |
+
+<Tip>
+  Use `.loop` or `.autoReverse` for idle/ambient animations. Use `.playOnce` or `.repeat(n)` when you need a completion callback to trigger the next step in a UI flow.
+</Tip>

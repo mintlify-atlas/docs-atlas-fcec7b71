@@ -1,0 +1,151 @@
+---
+title: "AnimationKeypath"
+description: "Target specific layers and properties in an animation for dynamic modification"
+---
+
+`AnimationKeypath` describes a search path into the layer tree of a `LottieAnimationView`. It identifies views and properties in the animation JSON by name, and is the first argument to every dynamic property call such as `setValueProvider(_:keypath:)`.
+
+## How keypaths work
+
+A keypath is a dot-separated string of layer and property names that mirrors the hierarchy in your After Effects composition. Each segment narrows the search one level deeper in the animation tree.
+
+```
+"LayerName.GroupName.Fill 1.Color"
+```
+
+Lottie walks the layer tree and matches each segment against layer names in the JSON. The names come directly from what you named each layer and group in After Effects. To inspect keypaths for a given animation, load it in [Lottie Inspector](https://lottie.io) or enable keypath logging on the view:
+
+```swift
+animationView.logHierarchyKeypaths()
+```
+
+### Wildcard matching
+
+| Wildcard | Behaviour |
+|---|---|
+| `*` | Matches any single level in the hierarchy |
+| `**` | Matches any number of levels (zero or more) |
+
+```swift
+// Exact path — one specific fill on one specific layer
+AnimationKeypath(keypath: "BackgroundLayer.Shape Group.Fill 1.Color")
+
+// Single wildcard — matches "Fill 1.Color" on every direct child of "BackgroundLayer"
+AnimationKeypath(keypath: "BackgroundLayer.*.Fill 1.Color")
+
+// Double wildcard — matches every "Fill 1.Color" anywhere in the animation
+AnimationKeypath(keypath: "**.Fill 1.Color")
+```
+
+<Tip>
+Use `**` when you want to update a property across every layer at once, for example to tint all stroke colors simultaneously.
+</Tip>
+
+## Initializers
+
+<ParamField path="keypath" type="String" required>
+  A dot-separated string that is split on `"."` to produce the list of keys. For example `"Layer.Group.Fill 1.Color"` becomes `["Layer", "Group", "Fill 1", "Color"]`.
+</ParamField>
+
+```swift
+// From a dot-separated string
+let keypath = AnimationKeypath(keypath: "MyLayer.Fill 1.Color")
+```
+
+---
+
+<ParamField path="keys" type="[String]" required>
+  An array of individual key segments. Use this form when a layer name itself contains a dot.
+</ParamField>
+
+```swift
+// From an array of keys — useful when a layer name contains a period
+let keypath = AnimationKeypath(keys: ["My.Layer", "Fill 1", "Color"])
+```
+
+---
+
+`AnimationKeypath` also conforms to `ExpressibleByStringLiteral`, so you can pass a string literal anywhere a keypath is expected:
+
+```swift
+animationView.setValueProvider(provider, keypath: "**.Stroke 1.Color")
+```
+
+## Properties
+
+<ResponseField name="keys" type="[String]">
+  The individual path segments after splitting on `"."`. Read-write internally but exposed as `public internal(set)`.
+</ResponseField>
+
+<ResponseField name="string" type="String">
+  The dot-joined string representation of the keypath. Equivalent to `keys.joined(separator: ".")`.
+</ResponseField>
+
+## Combining keypaths with value providers
+
+The typical usage pattern is to create a keypath, create a value provider, and register them together on the animation view.
+
+<Steps>
+  <Step title="Identify the keypath">
+    Open the animation in Lottie Inspector or call `animationView.logHierarchyKeypaths()` to find the exact path to the property you want to change.
+  </Step>
+  <Step title="Create the keypath">
+    ```swift
+    let colorKeypath = AnimationKeypath(keypath: "BirdLayer.Body.Fill 1.Color")
+    ```
+  </Step>
+  <Step title="Create a value provider">
+    ```swift
+    let redProvider = ColorValueProvider(LottieColor(r: 1, g: 0, b: 0, a: 1))
+    ```
+  </Step>
+  <Step title="Register on the animation view">
+    ```swift
+    animationView.setValueProvider(redProvider, keypath: colorKeypath)
+    ```
+  </Step>
+</Steps>
+
+## Common keypath patterns
+
+<AccordionGroup>
+  <Accordion title="Target a specific layer's fill color">
+    ```swift
+    let keypath = AnimationKeypath(keypath: "MyLayer.Group 1.Fill 1.Color")
+    animationView.setValueProvider(
+        ColorValueProvider(LottieColor(r: 0.2, g: 0.6, b: 1.0, a: 1.0)),
+        keypath: keypath
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Target all fills in the animation">
+    ```swift
+    // Double-star matches at any depth
+    let allFills = AnimationKeypath(keypath: "**.Fill 1.Color")
+    animationView.setValueProvider(brandColorProvider, keypath: allFills)
+    ```
+  </Accordion>
+
+  <Accordion title="Target all strokes on a specific layer">
+    ```swift
+    // Single-star matches any one intermediate level
+    let strokes = AnimationKeypath(keypath: "OutlineLayer.*.Stroke 1.Color")
+    animationView.setValueProvider(strokeProvider, keypath: strokes)
+    ```
+  </Accordion>
+
+  <Accordion title="Target opacity of every layer">
+    ```swift
+    let opacityPath = AnimationKeypath(keypath: "**.Transform.Opacity")
+    animationView.setValueProvider(
+        FloatValueProvider(0.5),
+        keypath: opacityPath
+    )
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+Layer names in keypaths are case-sensitive and must match the names in the After Effects composition exactly, including any spaces.
+</Note>

@@ -1,0 +1,312 @@
+---
+title: "LottieAnimation"
+description: "The model object representing a loaded Lottie animation"
+---
+
+`LottieAnimation` is the top-level data model that holds all animation data parsed from a Lottie JSON file. It is `Codable` and `Sendable`, and conforms to the [Lottie JSON schema](https://github.com/airbnb/lottie-web/tree/master/docs/json).
+
+## Type aliases
+
+These typealiases are defined in `AnimationTime.swift` and used throughout the Lottie API.
+
+<ResponseField name="AnimationFrameTime" type="CGFloat">
+  Animation time expressed as a frame number (`seconds × framerate`). Used for `startFrame`, `endFrame`, and frame-based seeking.
+</ResponseField>
+
+<ResponseField name="AnimationProgressTime" type="CGFloat">
+  Animation time expressed as a normalized progress value from `0.0` (start) to `1.0` (end).
+</ResponseField>
+
+## Properties
+
+<ResponseField name="startFrame" type="AnimationFrameTime">
+  The start frame of the composition as encoded in the JSON.
+</ResponseField>
+
+<ResponseField name="endFrame" type="AnimationFrameTime">
+  The end frame of the composition as encoded in the JSON.
+</ResponseField>
+
+<ResponseField name="framerate" type="Double">
+  The frame rate of the composition in frames per second.
+</ResponseField>
+
+<ResponseField name="duration" type="TimeInterval">
+  The total duration of the animation in seconds. Computed as `(endFrame - startFrame) / framerate`.
+</ResponseField>
+
+<ResponseField name="bounds" type="CGRect">
+  The natural bounds of the animation in points. Origin is always `(0, 0)`.
+</ResponseField>
+
+<ResponseField name="size" type="CGSize">
+  The natural size of the animation in points.
+</ResponseField>
+
+<ResponseField name="markerNames" type="[String]">
+  All marker names defined in the animation, in order. Returns an empty array if no markers are present.
+</ResponseField>
+
+## Loading animations
+
+### From a bundle
+
+Load an animation by filename from a bundle. The `.json` extension is omitted from the name.
+
+```swift
+static func named(
+  _ name: String,
+  bundle: Bundle = Bundle.main,
+  subdirectory: String? = nil,
+  animationCache: AnimationCacheProvider? = LottieAnimationCache.shared
+) -> LottieAnimation?
+```
+
+<ParamField path="name" type="String" required>
+  The filename without the `.json` extension. For example, `"StarAnimation"`.
+</ParamField>
+
+<ParamField path="bundle" type="Bundle" default="Bundle.main">
+  The bundle containing the animation file.
+</ParamField>
+
+<ParamField path="subdirectory" type="String?">
+  An optional subdirectory within the bundle where the file is located.
+</ParamField>
+
+<ParamField path="animationCache" type="AnimationCacheProvider?" default="LottieAnimationCache.shared">
+  A cache provider to avoid re-parsing the same animation. Pass `nil` to skip caching.
+</ParamField>
+
+<ResponseField name="return" type="LottieAnimation?">
+  The deserialized animation, or `nil` if the file was not found or could not be decoded.
+</ResponseField>
+
+```swift
+let animation = LottieAnimation.named("confetti")
+let animation = LottieAnimation.named("loading", bundle: .module, subdirectory: "Animations")
+```
+
+---
+
+### From a file path
+
+Load an animation from an absolute file path on disk.
+
+```swift
+static func filepath(
+  _ filepath: String,
+  animationCache: AnimationCacheProvider? = LottieAnimationCache.shared
+) -> LottieAnimation?
+```
+
+<ParamField path="filepath" type="String" required>
+  The absolute path to the JSON file. For example, `"/Users/me/starAnimation.json"`.
+</ParamField>
+
+<ParamField path="animationCache" type="AnimationCacheProvider?" default="LottieAnimationCache.shared">
+  A cache provider to avoid re-parsing the same animation. Pass `nil` to skip caching.
+</ParamField>
+
+<ResponseField name="return" type="LottieAnimation?">
+  The deserialized animation, or `nil` if the file was not found or could not be decoded.
+</ResponseField>
+
+```swift
+let path = Bundle.main.path(forResource: "confetti", ofType: "json")!
+let animation = LottieAnimation.filepath(path)
+```
+
+---
+
+### From an asset catalog
+
+Load a Lottie JSON file stored in an Xcode asset catalog.
+
+```swift
+static func asset(
+  _ name: String,
+  bundle: Bundle = Bundle.main,
+  animationCache: AnimationCacheProvider? = LottieAnimationCache.shared
+) -> LottieAnimation?
+```
+
+<ParamField path="name" type="String" required>
+  The name of the asset in the asset catalog. For example, `"StarAnimation"`.
+</ParamField>
+
+<ParamField path="bundle" type="Bundle" default="Bundle.main">
+  The bundle containing the asset catalog.
+</ParamField>
+
+<ParamField path="animationCache" type="AnimationCacheProvider?" default="LottieAnimationCache.shared">
+  A cache provider to avoid re-parsing the same animation. Pass `nil` to skip caching.
+</ParamField>
+
+<ResponseField name="return" type="LottieAnimation?">
+  The deserialized animation, or `nil` if the asset was not found or could not be decoded.
+</ResponseField>
+
+```swift
+let animation = LottieAnimation.asset("confetti")
+```
+
+---
+
+### From raw `Data`
+
+Parse a `LottieAnimation` directly from a `Data` object containing JSON.
+
+```swift
+static func from(
+  data: Data,
+  strategy: DecodingStrategy = LottieConfiguration.shared.decodingStrategy
+) throws -> LottieAnimation
+```
+
+<ParamField path="data" type="Data" required>
+  A `Data` object containing the raw Lottie JSON.
+</ParamField>
+
+<ParamField path="strategy" type="DecodingStrategy" default="LottieConfiguration.shared.decodingStrategy">
+  The decoding strategy to use. Either `.legacyCodable` (uses `JSONDecoder`) or `.dictionaryBased` (uses `JSONSerialization`).
+</ParamField>
+
+<ResponseField name="return" type="LottieAnimation">
+  The deserialized animation. Throws on failure.
+</ResponseField>
+
+```swift
+let data = try Data(contentsOf: url)
+let animation = try LottieAnimation.from(data: data)
+```
+
+---
+
+### From a URL (async)
+
+Load an animation asynchronously from a remote or local URL using Swift concurrency.
+
+```swift
+static func loadedFrom(
+  url: URL,
+  session: LottieURLSession = LottieConfiguration.defaultURLSession,
+  animationCache: AnimationCacheProvider? = LottieAnimationCache.shared
+) async -> LottieAnimation?
+```
+
+<ParamField path="url" type="URL" required>
+  The URL to load the animation from.
+</ParamField>
+
+<ParamField path="session" type="LottieURLSession" default="LottieConfiguration.defaultURLSession">
+  The URL session used to perform the network request.
+</ParamField>
+
+<ParamField path="animationCache" type="AnimationCacheProvider?" default="LottieAnimationCache.shared">
+  A cache provider. If the URL is already cached, the network request is skipped.
+</ParamField>
+
+<ResponseField name="return" type="LottieAnimation?">
+  The loaded animation, or `nil` if the request failed. Supports task cancellation.
+</ResponseField>
+
+```swift
+let url = URL(string: "https://example.com/animation.json")!
+let animation = await LottieAnimation.loadedFrom(url: url)
+```
+
+---
+
+### From a URL (closure-based)
+
+Load an animation asynchronously from a URL using a completion closure.
+
+```swift
+@discardableResult
+static func loadedFrom(
+  url: URL,
+  session: LottieURLSession = LottieConfiguration.defaultURLSession,
+  closure: @escaping LottieAnimation.DownloadClosure,
+  animationCache: AnimationCacheProvider? = LottieAnimationCache.shared
+) -> URLSessionDataTask?
+```
+
+<ParamField path="url" type="URL" required>
+  The URL to load the animation from.
+</ParamField>
+
+<ParamField path="session" type="LottieURLSession" default="LottieConfiguration.defaultURLSession">
+  The URL session used to perform the network request.
+</ParamField>
+
+<ParamField path="closure" type="@escaping (LottieAnimation?) -> Void" required>
+  Called on the main thread when loading completes. Receives `nil` if there was an error.
+</ParamField>
+
+<ParamField path="animationCache" type="AnimationCacheProvider?" default="LottieAnimationCache.shared">
+  A cache provider. Returns `nil` immediately (no task) if animation is already cached.
+</ParamField>
+
+<ResponseField name="return" type="URLSessionDataTask?">
+  A data task that can be cancelled, or `nil` if the animation was served from cache.
+</ResponseField>
+
+```swift
+let url = URL(string: "https://example.com/animation.json")!
+let task = LottieAnimation.loadedFrom(url: url) { animation in
+    animationView.animation = animation
+}
+// Cancel if needed:
+task?.cancel()
+```
+
+## Marker utilities
+
+Markers are named points in time encoded in the animation JSON. They let designers mark playback positions without requiring developers to track specific frame numbers.
+
+<Tip>
+  Use markers to decouple your playback code from frame numbers. If the animation is updated, the marker names remain stable.
+</Tip>
+
+```swift
+// Get progress time (0–1) for a named marker
+func progressTime(forMarker named: String) -> AnimationProgressTime?
+
+// Get frame time for a named marker
+func frameTime(forMarker named: String) -> AnimationFrameTime?
+
+// Get the duration frame time for a named marker
+func durationFrameTime(forMarker named: String) -> AnimationFrameTime?
+```
+
+## Time conversion utilities
+
+Convert between the three time representations used in the API.
+
+```swift
+// Frame time → progress (0–1), optionally clamped
+func progressTime(forFrame frameTime: AnimationFrameTime, clamped: Bool = true) -> AnimationProgressTime
+
+// Progress (0–1) → frame time
+func frameTime(forProgress progressTime: AnimationProgressTime) -> AnimationFrameTime
+
+// Frame time → seconds
+func time(forFrame frameTime: AnimationFrameTime) -> TimeInterval
+
+// Seconds → frame time
+func frameTime(forTime time: TimeInterval) -> AnimationFrameTime
+```
+
+```swift
+let animation = LottieAnimation.named("confetti")!
+
+// How long does the animation run?
+print(animation.duration) // e.g. 2.5
+
+// What frame is at the halfway point?
+let midFrame = animation.frameTime(forProgress: 0.5)
+
+// What is the progress at frame 30?
+let progress = animation.progressTime(forFrame: 30)
+```

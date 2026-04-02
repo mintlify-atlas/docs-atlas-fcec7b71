@@ -1,0 +1,298 @@
+---
+title: "LottiePlaybackMode"
+description: "Configuration for how a Lottie animation plays"
+---
+
+`LottiePlaybackMode` is the primary API for controlling animation playback state. It is a `Hashable` enum with two main cases: pausing at a specific state, or actively playing with a given mode.
+
+```swift
+public enum LottiePlaybackMode: Hashable {
+  case paused(at: PausedState)
+  case playing(_ mode: PlaybackMode)
+}
+```
+
+Set this on a `LottieAnimationView` or `LottieAnimationLayer` via the `playbackMode` property.
+
+## Cases
+
+### `.paused(at:)`
+
+Pauses the animation at a specific state defined by `PausedState`.
+
+```swift
+animationView.playbackMode = .paused(at: .progress(0.5))
+animationView.playbackMode = .paused(at: .frame(30))
+animationView.playbackMode = .paused(at: .marker("intro", position: .start))
+```
+
+### `.playing(_:)`
+
+Plays the animation using the given `PlaybackMode` configuration.
+
+```swift
+animationView.playbackMode = .playing(.fromProgress(0, toProgress: 1, loopMode: .loop))
+animationView.playbackMode = .playing(.marker("celebration", loopMode: .playOnce))
+```
+
+### `.paused` (convenience)
+
+A static convenience property that pauses the animation at the current frame.
+
+```swift
+animationView.playbackMode = .paused
+// Equivalent to:
+animationView.playbackMode = .paused(at: .currentFrame)
+```
+
+---
+
+## PausedState
+
+`LottiePlaybackMode.PausedState` specifies exactly where in the animation to pause.
+
+```swift
+public enum PausedState: Hashable {
+  case currentFrame
+  case progress(_ progress: AnimationProgressTime)
+  case frame(_ frame: AnimationFrameTime)
+  case time(_ time: TimeInterval)
+  case marker(_ name: String, position: LottieMarkerPosition = .start)
+}
+```
+
+<ResponseField name=".currentFrame" type="PausedState">
+  Pauses the animation at whatever frame it is currently on. Any active animation is stopped in place.
+</ResponseField>
+
+<ResponseField name=".progress(_ progress:)" type="PausedState">
+  Pauses at a normalized progress value between `0.0` (start) and `1.0` (end).
+</ResponseField>
+
+<ResponseField name=".frame(_ frame:)" type="PausedState">
+  Pauses at the given frame number (`AnimationFrameTime`, a `CGFloat`).
+</ResponseField>
+
+<ResponseField name=".time(_ time:)" type="PausedState">
+  Pauses at the given time offset in seconds from the beginning of the animation.
+</ResponseField>
+
+<ResponseField name=".marker(_ name:, position:)" type="PausedState">
+  Pauses at a named marker. `position` is `.start` (default) or `.end`. If the marker is not found, behavior is undefined.
+</ResponseField>
+
+```swift
+// Pause at the beginning
+animationView.playbackMode = .paused(at: .progress(0))
+
+// Pause at a specific frame
+animationView.playbackMode = .paused(at: .frame(45))
+
+// Pause at 1.2 seconds in
+animationView.playbackMode = .paused(at: .time(1.2))
+
+// Pause at the end of a named marker
+animationView.playbackMode = .paused(at: .marker("intro", position: .end))
+```
+
+---
+
+## PlaybackMode
+
+`LottiePlaybackMode.PlaybackMode` defines an active playback configuration: range, direction, and loop behavior.
+
+```swift
+public enum PlaybackMode: Hashable {
+  case fromProgress(_ fromProgress: AnimationProgressTime?, toProgress: AnimationProgressTime, loopMode: LottieLoopMode)
+  case fromFrame(_ fromFrame: AnimationFrameTime?, toFrame: AnimationFrameTime, loopMode: LottieLoopMode)
+  case fromMarker(_ fromMarker: String?, toMarker: String, playEndMarkerFrame: Bool = true, loopMode: LottieLoopMode)
+  case marker(_ marker: String, loopMode: LottieLoopMode)
+  case markers(_ markers: [String])
+}
+```
+
+### `.fromProgress(_:toProgress:loopMode:)`
+
+Plays from one progress value to another.
+
+<ParamField path="fromProgress" type="AnimationProgressTime?">
+  Start progress (`0.0`–`1.0`). Pass `nil` to start from the current position.
+</ParamField>
+
+<ParamField path="toProgress" type="AnimationProgressTime" required>
+  End progress (`0.0`–`1.0`).
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode" required>
+  How the animation loops. See [LottieLoopMode](/api/lottie-loop-mode).
+</ParamField>
+
+```swift
+// Play from 0% to 100%, looping
+animationView.playbackMode = .playing(.fromProgress(0, toProgress: 1, loopMode: .loop))
+
+// Play from current position to 75%, once
+animationView.playbackMode = .playing(.fromProgress(nil, toProgress: 0.75, loopMode: .playOnce))
+```
+
+---
+
+### `.fromFrame(_:toFrame:loopMode:)`
+
+Plays from one frame number to another.
+
+<ParamField path="fromFrame" type="AnimationFrameTime?">
+  Start frame. Pass `nil` to start from the current frame.
+</ParamField>
+
+<ParamField path="toFrame" type="AnimationFrameTime" required>
+  End frame.
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode" required>
+  How the animation loops. See [LottieLoopMode](/api/lottie-loop-mode).
+</ParamField>
+
+```swift
+animationView.playbackMode = .playing(.fromFrame(0, toFrame: 60, loopMode: .playOnce))
+```
+
+---
+
+### `.fromMarker(_:toMarker:playEndMarkerFrame:loopMode:)`
+
+Plays from a named marker to another named marker.
+
+<ParamField path="fromMarker" type="String?">
+  Name of the start marker. Pass `nil` to start from the current position.
+</ParamField>
+
+<ParamField path="toMarker" type="String" required>
+  Name of the end marker. Playback exits if the marker is not found.
+</ParamField>
+
+<ParamField path="playEndMarkerFrame" type="Bool" default="true">
+  Whether to play the frame of the end marker itself. Set to `false` if the end marker is the beginning of the next section (to avoid a one-frame overlap).
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode" required>
+  How the animation loops. See [LottieLoopMode](/api/lottie-loop-mode).
+</ParamField>
+
+```swift
+animationView.playbackMode = .playing(
+  .fromMarker("intro_start", toMarker: "intro_end", loopMode: .playOnce)
+)
+
+// Avoid overlap with the next section's first frame
+animationView.playbackMode = .playing(
+  .fromMarker(nil, toMarker: "section_2_start", playEndMarkerFrame: false, loopMode: .playOnce)
+)
+```
+
+---
+
+### `.marker(_:loopMode:)`
+
+Plays from the start of a named marker through its full duration.
+
+<ParamField path="marker" type="String" required>
+  The name of the marker to play. Playback exits if not found.
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode" required>
+  How the animation loops. See [LottieLoopMode](/api/lottie-loop-mode).
+</ParamField>
+
+```swift
+animationView.playbackMode = .playing(.marker("celebration", loopMode: .loop))
+```
+
+---
+
+### `.markers(_:)`
+
+Plays a list of named markers sequentially. Markers without a duration are skipped. If another animation starts while this sequence is playing, the sequence is cancelled.
+
+<ParamField path="markers" type="[String]" required>
+  An ordered list of marker names to play. Markers not found in the animation are skipped.
+</ParamField>
+
+```swift
+animationView.playbackMode = .playing(.markers(["intro", "idle", "outro"]))
+```
+
+---
+
+## Convenience methods on `PlaybackMode`
+
+These static methods on `LottiePlaybackMode.PlaybackMode` start playback from the current position.
+
+```swift
+// From current progress to a target progress
+static func toProgress(_ toProgress: AnimationProgressTime, loopMode: LottieLoopMode) -> PlaybackMode
+
+// From current frame to a target frame
+static func toFrame(_ toFrame: AnimationFrameTime, loopMode: LottieLoopMode) -> PlaybackMode
+
+// From current position to a named marker
+static func toMarker(_ toMarker: String, playEndMarkerFrame: Bool = true, loopMode: LottieLoopMode) -> PlaybackMode
+```
+
+```swift
+animationView.playbackMode = .playing(.toProgress(1.0, loopMode: .playOnce))
+animationView.playbackMode = .playing(.toMarker("end", loopMode: .playOnce))
+```
+
+---
+
+## LottieMarkerPosition
+
+Specifies where within a marker's range to position the animation when using `.paused(at: .marker(...))`.
+
+```swift
+public enum LottieMarkerPosition: Hashable {
+  case start
+  case end
+}
+```
+
+<ResponseField name=".start" type="LottieMarkerPosition">
+  The frame at the beginning of the marker's range.
+</ResponseField>
+
+<ResponseField name=".end" type="LottieMarkerPosition">
+  The frame at the end of the marker's range.
+</ResponseField>
+
+---
+
+## Common patterns
+
+<CodeGroup>
+
+```swift Play once from start to end
+animationView.playbackMode = .playing(.fromProgress(0, toProgress: 1, loopMode: .playOnce))
+```
+
+```swift Loop indefinitely
+animationView.playbackMode = .playing(.fromProgress(0, toProgress: 1, loopMode: .loop))
+```
+
+```swift Pause at midpoint
+animationView.playbackMode = .paused(at: .progress(0.5))
+```
+
+```swift Play a named section
+animationView.playbackMode = .playing(.marker("loading", loopMode: .loop))
+```
+
+```swift Play a sequence of markers
+animationView.playbackMode = .playing(.markers(["step1", "step2", "step3"]))
+```
+
+</CodeGroup>
+
+<Note>
+  The deprecated top-level cases (`.fromProgress`, `.fromFrame`, `.fromMarker`, `.marker`, `.markers`, `.pause`, `.progress`, `.frame`, `.time`) still compile but will be removed in a future major release. Migrate to `.playing(_:)` and `.paused(at:)`.
+</Note>

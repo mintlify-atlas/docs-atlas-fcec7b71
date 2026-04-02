@@ -1,0 +1,79 @@
+---
+title: "Introduction"
+description: "Lottie is a cross-platform library that natively renders After Effects animations on iOS, macOS, tvOS, and visionOS in real time with minimal code."
+---
+
+Lottie loads and renders animations exported in the [Bodymovin](https://github.com/bodymovin/bodymovin) JSON format from Adobe After Effects, and plays them back natively on Apple platforms without any additional tooling. Because animations are backed by JSON, they are extremely small in size but can be large in complexity.
+
+Animations can be played, paused, looped, reversed, sped up, slowed down, scrubbed interactively, and even modified at runtime — changing colors, positions, and any keyframable value.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Native Rendering" icon="paintbrush">
+    Renders vector-based animations natively using Core Animation or the Main Thread rendering engine — no WebViews, no GIFs.
+  </Card>
+  <Card title="After Effects Export" icon="film">
+    Load animations created in After Effects and exported with the Bodymovin plugin, directly as JSON or `.lottie` files.
+  </Card>
+  <Card title="SwiftUI & UIKit" icon="swift">
+    First-class support for both SwiftUI (`LottieView`) and UIKit (`LottieAnimationView`), with an `@IBDesignable` UIView subclass.
+  </Card>
+  <Card title="Runtime Control" icon="sliders">
+    Play, pause, stop, loop, reverse, scrub by progress or frame, and even change colors and layer properties at runtime.
+  </Card>
+  <Card title="Small Footprint" icon="feather">
+    Animations ship as compact JSON or precompiled `.lottie` bundles. No large image assets required.
+  </Card>
+  <Card title="Privacy First" icon="shield">
+    Lottie collects no data and ships with a privacy manifest (`PrivacyInfo.xcprivacy`) ready for App Store submissions.
+  </Card>
+</CardGroup>
+
+## Supported Platforms
+
+Lottie supports all major Apple platforms. The minimum deployment targets match those declared in `Package.swift` and `lottie-ios.podspec`:
+
+| Platform  | Minimum Version |
+|-----------|----------------|
+| iOS       | 13.0           |
+| macOS     | 10.15          |
+| tvOS      | 13.0           |
+| visionOS  | 1.0            |
+
+<Note>
+  visionOS 1.0 support was added in Lottie 4.x. If you are targeting an earlier version of Lottie, visionOS is not available.
+</Note>
+
+## Supported File Formats
+
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| Bodymovin JSON | `.json` | The original Lottie format, exported directly from After Effects via the Bodymovin plugin. |
+| DotLottie | `.lottie` | A ZIP-based container that bundles one or more animations together with their image assets. Smaller and more portable than raw JSON. |
+
+## Rendering Engines
+
+Lottie includes two rendering engines. You can configure which engine is used via `LottieConfiguration`.
+
+| Engine | Class constant | Characteristics |
+|--------|---------------|-----------------|
+| Core Animation | `.coreAnimation` | Runs entirely on the render server. Zero CPU overhead during playback. Default background behavior is `.continuePlaying`. Recommended for most use cases. |
+| Main Thread | `.mainThread` | Renders each frame on the main thread. Required for features that Core Animation cannot express. Default background behavior is `.pauseAndRestore`. |
+
+## Animation Controls
+
+Once an animation is loaded you have full control over playback:
+
+- **Play** from the current frame to the end, or between any two progress values (0–1) or frame numbers.
+- **Loop** continuously, auto-reverse, or repeat a fixed number of times using `LottieLoopMode`.
+- **Pause** at the current frame, or stop and reset to the beginning.
+- **Scrub** to any progress or frame number by setting `currentProgress` or `currentFrame`.
+- **Speed** up or slow down playback with `animationSpeed`.
+- **Markers** — jump to named points in time embedded in the animation data.
+
+## Next Steps
+
+<Card title="Installation" icon="download" href="/installation">
+  Add Lottie to your project using Swift Package Manager, CocoaPods, or Carthage.
+</Card>

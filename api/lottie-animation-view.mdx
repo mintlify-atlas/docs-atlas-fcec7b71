@@ -1,0 +1,951 @@
+---
+title: "LottieAnimationView"
+description: "UIView subclass for rendering Lottie animations in UIKit"
+---
+
+`LottieAnimationView` is the primary UIKit component for displaying Lottie animations. It is a `UIView` subclass (via `LottieAnimationViewBase`) that wraps a `LottieAnimationLayer` and integrates with the standard UIKit layout and lifecycle system.
+
+It is also available as a SwiftUI view ([`LottieView`](/api/lottie-view)) and as a `CALayer` subclass ([`LottieAnimationLayer`](/api/lottie-animation-layer)).
+
+```swift
+import Lottie
+
+let animationView = LottieAnimationView(name: "hello-world")
+animationView.contentMode = .scaleAspectFit
+animationView.loopMode = .loop
+animationView.play()
+view.addSubview(animationView)
+```
+
+---
+
+## Initializers
+
+### `init(animation:imageProvider:textProvider:fontProvider:configuration:logger:)`
+
+Initializes a `LottieAnimationView` with a pre-loaded `LottieAnimation` object.
+
+```swift
+let animation = LottieAnimation.named("confetti")
+let animationView = LottieAnimationView(
+  animation: animation,
+  imageProvider: BundleImageProvider(bundle: .main, searchPath: nil),
+  configuration: LottieConfiguration(renderingEngine: .automatic)
+)
+```
+
+<ParamField path="animation" type="LottieAnimation?" required>
+  The `LottieAnimation` to display. Setting this after initialization replaces the current animation and resets all playback state.
+</ParamField>
+
+<ParamField path="imageProvider" type="AnimationImageProvider?" default="BundleImageProvider(bundle: .main, searchPath: nil)">
+  Provides image assets referenced by the animation. Defaults to searching the main bundle.
+</ParamField>
+
+<ParamField path="textProvider" type="AnimationKeypathTextProvider" default="DefaultTextProvider()">
+  Provides runtime values for text layers within the animation.
+</ParamField>
+
+<ParamField path="fontProvider" type="AnimationFontProvider" default="DefaultFontProvider()">
+  Provides fonts for text layers within the animation.
+</ParamField>
+
+<ParamField path="configuration" type="LottieConfiguration" default=".shared">
+  Controls rendering engine selection (`.automatic`, `.mainThread`, or `.coreAnimation`) and other global options.
+</ParamField>
+
+<ParamField path="logger" type="LottieLogger" default=".shared">
+  Logger used for warnings and assertions. Immutable after initialization.
+</ParamField>
+
+---
+
+### `init(dotLottie:animationId:textProvider:fontProvider:configuration:logger:)`
+
+Initializes a `LottieAnimationView` from a pre-loaded `DotLottieFile`. The `.lottie` format bundles the animation JSON with image assets in a single ZIP-based archive.
+
+```swift
+DotLottieFile.named("animation") { result in
+  if case .success(let file) = result {
+    let animationView = LottieAnimationView(
+      dotLottie: file,
+      animationId: nil // plays the first animation in the file
+    )
+    animationView.play()
+  }
+}
+```
+
+<ParamField path="dotLottie" type="DotLottieFile?" required>
+  The `.lottie` file to display. Loop mode and speed are read from the file's embedded configuration.
+</ParamField>
+
+<ParamField path="animationId" type="String?" default="nil">
+  The ID of the specific animation to play within the `.lottie` file. Defaults to the first animation.
+</ParamField>
+
+<ParamField path="textProvider" type="AnimationKeypathTextProvider" default="DefaultTextProvider()">
+  Provides runtime values for text layers.
+</ParamField>
+
+<ParamField path="fontProvider" type="AnimationFontProvider" default="DefaultFontProvider()">
+  Provides fonts for text layers.
+</ParamField>
+
+<ParamField path="configuration" type="LottieConfiguration" default=".shared">
+  Rendering engine configuration.
+</ParamField>
+
+<ParamField path="logger" type="LottieLogger" default=".shared">
+  Logger for warnings and assertions. Immutable after initialization.
+</ParamField>
+
+---
+
+### `init(configuration:logger:)`
+
+Creates an empty `LottieAnimationView` with no animation loaded. Useful when you will load an animation later via the `animation` property or `loadAnimation(_:from:)`.
+
+```swift
+let animationView = LottieAnimationView(
+  configuration: LottieConfiguration(renderingEngine: .coreAnimation)
+)
+// Load the animation later
+animationView.animation = LottieAnimation.named("loading")
+```
+
+<ParamField path="configuration" type="LottieConfiguration" default=".shared">
+  Rendering engine configuration.
+</ParamField>
+
+<ParamField path="logger" type="LottieLogger" default=".shared">
+  Logger for warnings and assertions.
+</ParamField>
+
+---
+
+### Convenience Initializers
+
+These initializers are defined in `LottieAnimationViewInitializers.swift` and handle loading from various sources.
+
+<Expandable title="init(name:bundle:subdirectory:imageProvider:animationCache:configuration:)">
+
+Loads a Lottie animation from a JSON file in a bundle. This is the most common way to create a `LottieAnimationView`.
+
+```swift
+let animationView = LottieAnimationView(
+  name: "checkmark",
+  bundle: .main,
+  subdirectory: "Animations",
+  animationCache: LottieAnimationCache.shared
+)
+```
+
+<ParamField path="name" type="String" required>
+  The filename of the Lottie animation JSON, without the `.json` extension.
+</ParamField>
+
+<ParamField path="bundle" type="Bundle" default="Bundle.main">
+  The bundle containing the animation file.
+</ParamField>
+
+<ParamField path="subdirectory" type="String?" default="nil">
+  An optional subdirectory path within the bundle.
+</ParamField>
+
+<ParamField path="imageProvider" type="AnimationImageProvider?" default="nil">
+  Image asset provider. Defaults to searching the specified bundle.
+</ParamField>
+
+<ParamField path="animationCache" type="AnimationCacheProvider?" default="LottieAnimationCache.shared">
+  Cache for decoded `LottieAnimation` objects to avoid re-parsing on disk.
+</ParamField>
+
+<ParamField path="configuration" type="LottieConfiguration" default=".shared">
+  Rendering engine configuration.
+</ParamField>
+
+</Expandable>
+
+<Expandable title="init(filePath:imageProvider:animationCache:configuration:)">
+
+Loads a Lottie animation from an absolute file path on disk.
+
+```swift
+let path = Bundle.main.path(forResource: "animation", ofType: "json")!
+let animationView = LottieAnimationView(filePath: path)
+```
+
+<ParamField path="filePath" type="String" required>
+  The absolute path to the `.json` animation file.
+</ParamField>
+
+<ParamField path="imageProvider" type="AnimationImageProvider?" default="nil">
+  Defaults to searching the same directory as the file.
+</ParamField>
+
+<ParamField path="animationCache" type="AnimationCacheProvider?" default="LottieAnimationCache.shared">
+  Cache for decoded animations.
+</ParamField>
+
+<ParamField path="configuration" type="LottieConfiguration" default=".shared">
+  Rendering engine configuration.
+</ParamField>
+
+</Expandable>
+
+<Expandable title="init(url:imageProvider:session:closure:animationCache:configuration:)">
+
+Loads a Lottie animation asynchronously from a URL.
+
+```swift
+let url = URL(string: "https://example.com/animation.json")!
+let animationView = LottieAnimationView(
+  url: url,
+  closure: { error in
+    if error == nil {
+      animationView.play()
+    }
+  }
+)
+```
+
+<ParamField path="url" type="URL" required>
+  The URL to download the animation from.
+</ParamField>
+
+<ParamField path="imageProvider" type="AnimationImageProvider?" default="nil">
+  Defaults to searching the main bundle.
+</ParamField>
+
+<ParamField path="session" type="LottieURLSession" default="LottieConfiguration.defaultURLSession">
+  The URL session used for the network request.
+</ParamField>
+
+<ParamField path="closure" type="(Error?) -> Void" required>
+  Called when the download completes. `error` is `nil` on success.
+</ParamField>
+
+<ParamField path="animationCache" type="AnimationCacheProvider?" default="LottieAnimationCache.shared">
+  Cache for downloaded animations.
+</ParamField>
+
+<ParamField path="configuration" type="LottieConfiguration" default=".shared">
+  Rendering engine configuration.
+</ParamField>
+
+</Expandable>
+
+<Expandable title="init(asset:bundle:imageProvider:animationCache:configuration:)">
+
+Loads a Lottie animation from an Xcode asset catalog.
+
+```swift
+let animationView = LottieAnimationView(
+  asset: "SuccessAnimation",
+  bundle: .main
+)
+```
+
+<ParamField path="asset" type="String" required>
+  The name of the animation in the asset catalog.
+</ParamField>
+
+<ParamField path="bundle" type="Bundle" default="Bundle.main">
+  The bundle containing the asset catalog.
+</ParamField>
+
+<ParamField path="imageProvider" type="AnimationImageProvider?" default="nil">
+  Defaults to searching the bundle.
+</ParamField>
+
+<ParamField path="animationCache" type="AnimationCacheProvider?" default="LottieAnimationCache.shared">
+  Cache for decoded animations.
+</ParamField>
+
+<ParamField path="configuration" type="LottieConfiguration" default=".shared">
+  Rendering engine configuration.
+</ParamField>
+
+</Expandable>
+
+<Expandable title="init(dotLottieName:bundle:subdirectory:animationId:dotLottieCache:configuration:completion:)">
+
+Loads a `.lottie` file asynchronously from a bundle.
+
+```swift
+LottieAnimationView(
+  dotLottieName: "PartyAnimation",
+  bundle: .main,
+  animationId: nil
+) { animationView, error in
+  guard error == nil else { return }
+  animationView.play()
+}
+```
+
+<ParamField path="dotLottieName" type="String" required>
+  The filename of the `.lottie` file, without the `.lottie` extension.
+</ParamField>
+
+<ParamField path="bundle" type="Bundle" default="Bundle.main">
+  The bundle to search.
+</ParamField>
+
+<ParamField path="subdirectory" type="String?" default="nil">
+  Optional subdirectory within the bundle.
+</ParamField>
+
+<ParamField path="animationId" type="String?" default="nil">
+  The ID of the specific animation within the file. Defaults to the first.
+</ParamField>
+
+<ParamField path="dotLottieCache" type="DotLottieCacheProvider?" default="DotLottieCache.sharedCache">
+  Cache for loaded `.lottie` files.
+</ParamField>
+
+<ParamField path="configuration" type="LottieConfiguration" default=".shared">
+  Rendering engine configuration.
+</ParamField>
+
+<ParamField path="completion" type="((LottieAnimationView, Error?) -> Void)?" default="nil">
+  Called when the file finishes loading or fails with an error.
+</ParamField>
+
+</Expandable>
+
+---
+
+## Properties
+
+### Animation
+
+<ParamField path="animation" type="LottieAnimation?">
+  The `LottieAnimation` currently loaded into the view. Setting this property replaces the current animation, clears all completion blocks, and resets the view to the start of the new animation's timeline.
+</ParamField>
+
+<ParamField path="animationLoaded" type="((LottieAnimationView, LottieAnimation) -> Void)?">
+  A closure called once the animation is fully loaded and applied. Useful when using initializers that load asynchronously (e.g., `.lottie` files or URL-based loading), as the closure is called in both the sync and async cases. If set after the animation is already loaded, it fires immediately.
+
+  ```swift
+  animationView.animationLoaded = { view, animation in
+    view.play()
+  }
+  ```
+</ParamField>
+
+### Playback State
+
+<ParamField path="currentProgress" type="AnimationProgressTime">
+  The current playback position as a normalized value between `0.0` (start) and `1.0` (end). Setting this stops any in-flight animation and seeks to the specified frame. Falls back to `0` if no animation is loaded.
+</ParamField>
+
+<ParamField path="currentFrame" type="AnimationFrameTime">
+  The current frame number in the animation's native framerate. Setting this stops any in-flight animation and seeks to the exact frame.
+</ParamField>
+
+<ParamField path="currentTime" type="TimeInterval">
+  The current playback position in seconds. Setting this stops any in-flight animation. Falls back to `0` if no animation is loaded.
+</ParamField>
+
+<ParamField path="realtimeAnimationFrame" type="AnimationFrameTime">
+  The live frame number while an animation is actively playing. Unlike `currentFrame`, this reads from the layer's presentation layer and reflects mid-animation values.
+</ParamField>
+
+<ParamField path="realtimeAnimationProgress" type="AnimationProgressTime">
+  The live normalized progress (0–1) while an animation is playing. Derived from `realtimeAnimationFrame`.
+</ParamField>
+
+<ParamField path="isAnimationPlaying" type="Bool">
+  `true` if an animation is currently playing. Read-only.
+</ParamField>
+
+<ParamField path="isAnimationQueued" type="Bool">
+  `true` if the animation will begin playing as soon as this view is added to a window.
+</ParamField>
+
+<ParamField path="currentPlaybackMode" type="LottiePlaybackMode?">
+  The `LottiePlaybackMode` currently in use. Read-only. Reflects the last playback mode applied via `play(...)` or `setPlaybackMode(_:completion:)`.
+</ParamField>
+
+### Playback Configuration
+
+<ParamField path="loopMode" type="LottieLoopMode" default=".playOnce">
+  Controls loop behavior for `play(...)` calls. Possible values:
+  - `.playOnce` — plays once and stops
+  - `.loop` — loops continuously
+  - `.autoReverse` — plays forward then backward, looping
+  - `.repeat(Float)` — loops a fixed number of times
+  - `.repeatBackwards(Float)` — forward-then-backward a fixed number of times
+</ParamField>
+
+<ParamField path="animationSpeed" type="CGFloat" default="1">
+  Playback speed multiplier. Use negative values to play in reverse. Defaults to `1`.
+</ParamField>
+
+<ParamField path="respectAnimationFrameRate" type="Bool" default="false">
+  When `true`, the animation plays at the framerate embedded in the `LottieAnimation` model. When `false`, it plays at the device's native display framerate.
+</ParamField>
+
+### Rendering & Display
+
+<ParamField path="configuration" type="LottieConfiguration">
+  The rendering configuration for this view. Changing the `renderingEngine` property on this object will rebuild the underlying animation layer. Use `.automatic` to let Lottie choose the best engine, `.coreAnimation` for zero-CPU-overhead animations, or `.mainThread` for maximum compatibility.
+</ParamField>
+
+<ParamField path="currentRenderingEngine" type="RenderingEngine?">
+  The rendering engine currently in use (`.mainThread` or `.coreAnimation`). May be `nil` if the engine hasn't been selected yet (only possible in `.automatic` mode before the first frame renders).
+</ParamField>
+
+<ParamField path="backgroundBehavior" type="LottieBackgroundBehavior">
+  Determines what happens when the app moves to the background:
+  - `.stop` — stops and resets to the start frame
+  - `.pause` — pauses at the current frame
+  - `.pauseAndRestore` — pauses and resumes when foregrounded *(default for Main Thread engine)*
+  - `.forceFinish` — jumps to the end frame
+  - `.continuePlaying` — keeps playing *(default for Core Animation engine)*
+</ParamField>
+
+<ParamField path="windowBackgroundBehavior" type="LottieBackgroundBehavior?" default="nil">
+  Overrides `backgroundBehavior` specifically for when the view is added to or removed from the window hierarchy (e.g., during SwiftUI navigation, `UITableView` cell reuse, or `UIPageViewController` transitions). When `nil`, the value of `backgroundBehavior` is used for both cases.
+</ParamField>
+
+<ParamField path="shouldRasterizeWhenIdle" type="Bool" default="false">
+  When `true`, the animation layer rasterizes its rendered output to a bitmap when not animating. Improves performance for complex static frames. Not recommended for animations displayed above their natural resolution.
+</ParamField>
+
+<ParamField path="maskAnimationToBounds" type="Bool" default="true">
+  Clips the animation content to the bounds of the view.
+</ParamField>
+
+<ParamField path="viewportFrame" type="CGRect?">
+  Crops the animation to a sub-rectangle of its coordinate space, fitting that region to the view's bounds. Animatable — changing this inside a `UIView.animate(...)` block will animate the crop.
+</ParamField>
+
+<ParamField path="animateLayoutChangesWithCurrentCoreAnimationContext" type="Bool" default="true">
+  When `true`, position and transform changes to the view animate alongside any active `UIView` animation context. Set to `false` to make layout changes instant.
+</ParamField>
+
+### Asset Providers
+
+<ParamField path="imageProvider" type="AnimationImageProvider">
+  Supplies image assets to the animation. Setting this reloads all images from the new provider.
+</ParamField>
+
+<ParamField path="textProvider" type="AnimationKeypathTextProvider">
+  Supplies runtime text values for text layers. Use a custom provider to localize or dynamically update text within an animation.
+</ParamField>
+
+<ParamField path="fontProvider" type="AnimationFontProvider">
+  Supplies fonts for text layers. Override this to use custom typefaces.
+</ParamField>
+
+<ParamField path="valueProviders" type="[AnimationKeypath: AnyValueProvider]">
+  A dictionary of all value providers registered via `setValueProvider(_:keypath:)`. Read-only.
+</ParamField>
+
+### Advanced
+
+<ParamField path="mainThreadRenderingEngineShouldForceDisplayUpdateOnEachFrame" type="Bool" default="false">
+  Forces the Main Thread rendering engine to call `forceDisplayUpdate()` on every frame, bypassing its built-in rendering optimizations. Use only as a workaround for specific rendering bugs. Has no effect with the Core Animation engine.
+</ParamField>
+
+---
+
+## Methods
+
+### Playback
+
+#### `play(completion:)`
+
+Plays the animation from its current position to the end frame, using the current `loopMode`.
+
+```swift
+animationView.play { completed in
+  if completed {
+    print("Animation finished")
+  }
+}
+```
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when the animation stops. The `Bool` parameter is `true` if the animation played to completion, `false` if it was interrupted (e.g., by calling `stop()` or `pause()`).
+</ParamField>
+
+---
+
+#### `play(fromProgress:toProgress:loopMode:completion:)`
+
+Plays the animation between two normalized progress values (0.0–1.0).
+
+```swift
+// Play the second half of the animation, looping
+animationView.play(
+  fromProgress: 0.5,
+  toProgress: 1.0,
+  loopMode: .loop
+)
+```
+
+<ParamField path="fromProgress" type="AnimationProgressTime?" default="nil">
+  Starting progress value. If `nil`, playback starts from the current position.
+</ParamField>
+
+<ParamField path="toProgress" type="AnimationProgressTime" required>
+  Ending progress value (0.0–1.0).
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode?" default="nil">
+  Loop behavior for this play call. If `nil`, uses the view's `loopMode` property.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when the animation stops.
+</ParamField>
+
+---
+
+#### `play(fromFrame:toFrame:loopMode:completion:)`
+
+Plays the animation between two specific frame numbers.
+
+```swift
+animationView.play(
+  fromFrame: 0,
+  toFrame: 60,
+  loopMode: .playOnce
+) { completed in
+  print("Played frames 0–60")
+}
+```
+
+<ParamField path="fromFrame" type="AnimationFrameTime?" default="nil">
+  Starting frame. If `nil`, starts from the current frame.
+</ParamField>
+
+<ParamField path="toFrame" type="AnimationFrameTime" required>
+  Ending frame number in the animation's framerate.
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode?" default="nil">
+  Loop behavior. If `nil`, uses the view's `loopMode`.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when the animation stops.
+</ParamField>
+
+---
+
+#### `play(fromMarker:toMarker:playEndMarkerFrame:loopMode:completion:)`
+
+Plays the animation between two named markers embedded in the animation JSON.
+
+<Tip>
+  Markers let designers define named points in time. Using markers decouples your playback code from specific frame numbers — the animation can be updated without requiring code changes.
+</Tip>
+
+```swift
+animationView.play(
+  fromMarker: "intro_start",
+  toMarker: "intro_end",
+  loopMode: .playOnce
+)
+```
+
+<ParamField path="fromMarker" type="String?" default="nil">
+  The name of the start marker. If `nil`, starts from the current progress.
+</ParamField>
+
+<ParamField path="toMarker" type="String" required>
+  The name of the end marker. Playback exits if this marker is not found.
+</ParamField>
+
+<ParamField path="playEndMarkerFrame" type="Bool" default="true">
+  When `true`, the frame at `toMarker` is included in playback. Set to `false` if `toMarker` represents the start of the next section.
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode?" default="nil">
+  Loop behavior. If `nil`, uses the view's `loopMode`.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when the animation stops.
+</ParamField>
+
+---
+
+#### `play(marker:loopMode:completion:)`
+
+Plays the animation for the duration of a single named marker. The marker's start frame and duration are both read from the animation JSON.
+
+```swift
+animationView.play(marker: "tap_feedback", loopMode: .playOnce)
+```
+
+<ParamField path="marker" type="String" required>
+  The name of the marker. Playback exits if not found.
+</ParamField>
+
+<ParamField path="loopMode" type="LottieLoopMode?" default="nil">
+  Loop behavior. If `nil`, uses the view's `loopMode`.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when the animation stops.
+</ParamField>
+
+---
+
+#### `play(markers:completion:)`
+
+Plays a sequence of named markers one after another. Markers without a duration are skipped. If a new `play(...)` call is made while the sequence is running, the sequence is cancelled.
+
+```swift
+animationView.play(
+  markers: ["intro", "idle", "outro"]
+) { completed in
+  print("Sequence finished: \(completed)")
+}
+```
+
+<ParamField path="markers" type="[String]" required>
+  An ordered list of marker names to play sequentially.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called after all markers have played, or when the sequence is cancelled.
+</ParamField>
+
+---
+
+#### `setPlaybackMode(_:completion:)`
+
+Applies a `LottiePlaybackMode` value directly. This is the unified entry point for all playback states, including paused states.
+
+```swift
+animationView.setPlaybackMode(
+  .playing(.fromProgress(0, toProgress: 1, loopMode: .loop))
+)
+
+// Pause at a specific progress:
+animationView.setPlaybackMode(.paused(at: .progress(0.5)))
+```
+
+<ParamField path="playbackMode" type="LottiePlaybackMode" required>
+  The playback mode to apply. Can be `.playing(...)` or `.paused(at: ...)`.
+</ParamField>
+
+<ParamField path="completion" type="LottieCompletionBlock?" default="nil">
+  Called when an animation triggered by this method completes.
+</ParamField>
+
+---
+
+#### `stop()`
+
+Stops the animation and resets the current frame to the start of the animation's timeline. The completion block is called with `false`.
+
+```swift
+animationView.stop()
+```
+
+---
+
+#### `pause()`
+
+Pauses the animation at its current frame. The completion block is called with `false`.
+
+```swift
+animationView.pause()
+```
+
+---
+
+### Dynamic Value Providers
+
+#### `setValueProvider(_:keypath:)`
+
+Registers a `AnyValueProvider` that overrides the value of all animation properties matching the given keypath. Nearly any animatable property can be overridden at runtime.
+
+```swift
+// Change the fill color of all "Fill 1" layers to red
+let keypath = AnimationKeypath(keypath: "**.Fill 1.Color")
+let redProvider = ColorValueProvider(LottieColor(r: 1, g: 0.2, b: 0.3, a: 1))
+animationView.setValueProvider(redProvider, keypath: keypath)
+```
+
+<ParamField path="valueProvider" type="AnyValueProvider" required>
+  The value provider to register. Must match the type expected by the target property (e.g., `ColorValueProvider` for color properties).
+</ParamField>
+
+<ParamField path="keypath" type="AnimationKeypath" required>
+  The keypath pattern to match. Use `**` as a wildcard to match across all layers.
+</ParamField>
+
+---
+
+#### `removeValueProvider(for:)`
+
+Removes all value providers matching the given keypath, restoring properties to their original animation values.
+
+```swift
+let keypath = AnimationKeypath(keypath: "**.Fill 1.Color")
+animationView.removeValueProvider(for: keypath)
+```
+
+<ParamField path="keypath" type="AnimationKeypath" required>
+  The keypath whose registered providers should be removed.
+</ParamField>
+
+---
+
+#### `getValue(for:atFrame:)`
+
+Returns the current value of an animation property at a specific frame. Returns `nil` if the property is not found.
+
+<Warning>
+  This method is only supported by the **Main Thread** rendering engine. It always returns `nil` when using the Core Animation engine.
+</Warning>
+
+```swift
+let keypath = AnimationKeypath(keypath: "Shape Layer.Ellipse.Size")
+if let size = animationView.getValue(for: keypath, atFrame: 30) {
+  print("Size at frame 30: \(size)")
+}
+```
+
+<ParamField path="for" type="AnimationKeypath" required>
+  The keypath identifying the property to read.
+</ParamField>
+
+<ParamField path="atFrame" type="AnimationFrameTime?" required>
+  The frame to query. If `nil`, uses the current frame.
+</ParamField>
+
+---
+
+#### `getOriginalValue(for:atFrame:)`
+
+Returns the animation's original (pre-provider-override) value for a property. Useful when implementing a value provider that modifies the original value.
+
+<ParamField path="for" type="AnimationKeypath" required>
+  The keypath identifying the property to read.
+</ParamField>
+
+<ParamField path="atFrame" type="AnimationFrameTime?" required>
+  The frame to query. If `nil`, uses the current frame.
+</ParamField>
+
+---
+
+### Layer Composition
+
+#### `addSubview(_:forLayerAt:)`
+
+Attaches a `AnimationSubview` to a specific named layer in the animation. The subview will move and transform with the matched layer, using that layer's coordinate space.
+
+```swift
+let subview = AnimationSubview()
+subview.addSubview(myBadgeView)
+animationView.addSubview(subview, forLayerAt: AnimationKeypath(keypath: "Badge Layer"))
+```
+
+<ParamField path="subview" type="AnimationSubview" required>
+  The subview to attach.
+</ParamField>
+
+<ParamField path="forLayerAt" type="AnimationKeypath" required>
+  The keypath identifying the layer to attach to. If no matching layer is found, nothing happens.
+</ParamField>
+
+---
+
+### Coordinate Conversion
+
+#### `convert(_:toLayerAt:)` (CGRect)
+
+Converts a `CGRect` from the animation view's coordinate space into the coordinate space of a layer matched by keypath.
+
+<ParamField path="rect" type="CGRect" required>
+  The rectangle to convert.
+</ParamField>
+
+<ParamField path="toLayerAt" type="AnimationKeypath?" required>
+  The keypath of the target layer. Pass `nil` to convert to the root animation layer.
+</ParamField>
+
+---
+
+#### `convert(_:toLayerAt:)` (CGPoint)
+
+Converts a `CGPoint` from the animation view's coordinate space to a named layer's coordinate space.
+
+<ParamField path="point" type="CGPoint" required>
+  The point to convert.
+</ParamField>
+
+<ParamField path="toLayerAt" type="AnimationKeypath?" required>
+  The keypath of the target layer.
+</ParamField>
+
+---
+
+### Markers
+
+#### `progressTime(forMarker:)`
+
+Returns the normalized progress (0–1) for a named marker. Returns `nil` if the marker does not exist.
+
+```swift
+if let progress = animationView.progressTime(forMarker: "loop_start") {
+  animationView.currentProgress = progress
+}
+```
+
+---
+
+#### `frameTime(forMarker:)`
+
+Returns the frame number for a named marker.
+
+---
+
+#### `durationFrameTime(forMarker:)`
+
+Returns the duration (in frames) of a named marker.
+
+---
+
+### Utilities
+
+#### `loadAnimation(_:from:)`
+
+Replaces the current animation with an animation from a `DotLottieFile`, identified by ID.
+
+<ParamField path="animationId" type="String?" default="nil">
+  The ID of the animation within the `.lottie` file.
+</ParamField>
+
+<ParamField path="dotLottieFile" type="DotLottieFile" required>
+  The `.lottie` file to load from.
+</ParamField>
+
+---
+
+#### `loadAnimation(atIndex:from:)`
+
+Replaces the current animation with an animation from a `DotLottieFile`, identified by index.
+
+<ParamField path="index" type="Int" required>
+  The zero-based index of the animation to load.
+</ParamField>
+
+<ParamField path="dotLottieFile" type="DotLottieFile" required>
+  The `.lottie` file to load from.
+</ParamField>
+
+---
+
+#### `reloadImages()`
+
+Forces the animation to re-request all image assets from the current `imageProvider`.
+
+---
+
+#### `forceDisplayUpdate()`
+
+Forces a full re-render of the animation layer on the next display pass.
+
+---
+
+#### `logHierarchyKeypaths()`
+
+Logs all child keypaths in the current animation to the `LottieLogger`. Useful for discovering which keypaths are available for value providers.
+
+---
+
+#### `allHierarchyKeypaths() -> [String]`
+
+Returns all child keypaths in the current animation as an array of strings.
+
+---
+
+#### `setNodeIsEnabled(isEnabled:keypath:)`
+
+Enables or disables all animator nodes matching the keypath, effectively showing or hiding parts of the animation.
+
+```swift
+// Hide a specific layer at runtime
+animationView.setNodeIsEnabled(
+  isEnabled: false,
+  keypath: AnimationKeypath(keypath: "Background Layer")
+)
+```
+
+<ParamField path="isEnabled" type="Bool" required>
+  `true` to include the node in rendering; `false` to remove it from the render tree.
+</ParamField>
+
+<ParamField path="keypath" type="AnimationKeypath" required>
+  The keypath identifying the node(s) to enable or disable.
+</ParamField>
+
+---
+
+## Complete Example
+
+<Steps>
+
+### Load and play a looping animation
+
+```swift
+import Lottie
+import UIKit
+
+class AnimationViewController: UIViewController {
+  private let animationView = LottieAnimationView(
+    name: "loading-spinner",
+    configuration: LottieConfiguration(renderingEngine: .coreAnimation)
+  )
+
+  override func viewDidLoad() {
+    super.viewDidLoad()
+
+    animationView.contentMode = .scaleAspectFit
+    animationView.loopMode = .loop
+    animationView.backgroundBehavior = .continuePlaying
+    animationView.translatesAutoresizingMaskIntoConstraints = false
+
+    view.addSubview(animationView)
+    NSLayoutConstraint.activate([
+      animationView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      animationView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+      animationView.widthAnchor.constraint(equalToConstant: 200),
+      animationView.heightAnchor.constraint(equalToConstant: 200),
+    ])
+
+    animationView.play()
+  }
+}
+```
+
+### Override a color at runtime
+
+```swift
+let keypath = AnimationKeypath(keypath: "**.Stroke.Color")
+let brandColor = LottieColor(r: 0.2, g: 0.4, b: 1.0, a: 1.0)
+animationView.setValueProvider(ColorValueProvider(brandColor), keypath: keypath)
+```
+
+### Play a named marker sequence
+
+```swift
+animationView.play(
+  markers: ["enter", "idle_loop", "exit"]
+) { finished in
+  print("Sequence complete: \(finished)")
+}
+```
+
+</Steps>

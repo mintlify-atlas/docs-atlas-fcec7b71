@@ -1,0 +1,153 @@
+---
+title: 'Rendering engines'
+description: 'Choose between Core Animation and Main Thread rendering engines'
+---
+
+Lottie for iOS supports two rendering engines. The right choice depends on the features your animations use and the performance characteristics you need.
+
+## Engine overview
+
+| | Core Animation | Main Thread |
+|---|---|---|
+| **Execution** | GPU / Core Animation layer | Main thread (CPU) |
+| **CPU overhead** | Minimal | Higher |
+| **Feature support** | Partial | Full |
+| **Default background behavior** | `.continuePlaying` | `.pauseAndRestore` |
+| **Framerate under CPU load** | Unaffected | May drop |
+
+### Core Animation engine
+
+The Core Animation engine drives animations through native `CAAnimation` objects on the GPU. Because the work happens off the main thread, it adds no CPU overhead and maintains a stable framerate even when the CPU is busy. The trade-off is that it does not support every Lottie feature.
+
+### Main Thread engine
+
+The Main Thread engine evaluates every animation frame on the main thread. It supports every Lottie feature, but it does come with CPU overhead and can cause dropped frames when the main thread is busy.
+
+## `RenderingEngineOption`
+
+The `RenderingEngineOption` enum controls which engine to use. It is the type of the `renderingEngine` property on `LottieConfiguration`.
+
+```swift
+public enum RenderingEngineOption: Hashable {
+    /// Uses Core Animation where supported, falls back to Main Thread.
+    case automatic
+
+    /// Uses the specified rendering engine explicitly.
+    case specific(RenderingEngine)
+
+    // Convenience static properties
+    public static var mainThread: RenderingEngineOption { .specific(.mainThread) }
+    public static var coreAnimation: RenderingEngineOption { .specific(.coreAnimation) }
+}
+
+public enum RenderingEngine: Hashable {
+    case mainThread
+    case coreAnimation
+}
+```
+
+<Note>
+Prefer `.automatic` over `.specific(.coreAnimation)`. When using `.automatic`, Lottie automatically falls back to the Main Thread engine for any animation that uses features the Core Animation engine does not support, so you always get correct output.
+</Note>
+
+## Setting the engine globally
+
+Set `LottieConfiguration.shared.renderingEngine` once at app startup to apply the choice to every `LottieAnimationView`:
+
+```swift
+// Use the recommended automatic mode (this is already the default)
+LottieConfiguration.shared.renderingEngine = .automatic
+
+// Force Core Animation everywhere
+LottieConfiguration.shared.renderingEngine = .specific(.coreAnimation)
+
+// Force Main Thread everywhere
+LottieConfiguration.shared.renderingEngine = .specific(.mainThread)
+```
+
+## Setting the engine per view
+
+Pass a custom `LottieConfiguration` to any `LottieAnimationView` initializer to override the global setting for that view only:
+
+```swift
+let coreAnimationConfig = LottieConfiguration(renderingEngine: .specific(.coreAnimation))
+
+let animationView = LottieAnimationView(
+    name: "confetti",
+    configuration: coreAnimationConfig
+)
+```
+
+```swift
+let mainThreadConfig = LottieConfiguration(renderingEngine: .specific(.mainThread))
+
+let animationView = LottieAnimationView(
+    name: "complex-animation",
+    configuration: mainThreadConfig
+)
+```
+
+## Background behavior
+
+`LottieBackgroundBehavior` controls what happens when the app moves to the background. The default value differs between engines because their performance profiles are different.
+
+```swift
+public enum LottieBackgroundBehavior {
+    /// Stop the animation and reset it to the beginning. Completion block is called.
+    case stop
+
+    /// Pause the animation in its current state. Completion block is called.
+    case pause
+
+    /// Pause and restart when the app returns to the foreground.
+    /// This is the default for the Main Thread engine.
+    case pauseAndRestore
+
+    /// Stop and jump to the end of the current play time. Completion block is called.
+    case forceFinish
+
+    /// Keep playing in the background.
+    /// This is the default for the Core Animation engine.
+    case continuePlaying
+}
+```
+
+Because the Core Animation engine carries no CPU overhead, it defaults to `.continuePlaying` — there is no cost to letting it run while the app is backgrounded. The Main Thread engine defaults to `.pauseAndRestore` to avoid burning CPU cycles when the animation is not visible.
+
+<Warning>
+Do not use `.continuePlaying` with the Main Thread rendering engine. Because the Main Thread engine evaluates frames on the CPU, playing in the background wastes resources and can impact performance.
+</Warning>
+
+Set `backgroundBehavior` on the view to override the engine default:
+
+```swift
+animationView.backgroundBehavior = .pause
+```
+
+## Decoding strategy
+
+`LottieConfiguration` also exposes a `decodingStrategy` property that controls how JSON animation files are parsed:
+
+```swift
+public enum DecodingStrategy: Hashable {
+    /// Dictionary-based deserialization — 2–3× faster than Codable.
+    /// This is the default as of Lottie 4.x.
+    case dictionaryBased
+
+    /// Codable-based deserialization. Retained for compatibility.
+    /// Consider it soft-deprecated.
+    case legacyCodable
+}
+```
+
+```swift
+// Default — no action needed
+LottieConfiguration.shared.decodingStrategy = .dictionaryBased
+
+// Legacy Codable path (not recommended)
+LottieConfiguration.shared.decodingStrategy = .legacyCodable
+```
+
+<Tip>
+Leave `decodingStrategy` at the default `.dictionaryBased`. It is at least 2–3× faster than `.legacyCodable` and is the recommended strategy since Lottie 4.
+</Tip>

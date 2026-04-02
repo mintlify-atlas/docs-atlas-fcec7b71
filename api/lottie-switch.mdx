@@ -1,0 +1,311 @@
+---
+title: "LottieSwitch"
+description: "Animated toggle switch powered by Lottie"
+---
+
+Lottie provides two complementary switch types depending on your UI framework:
+
+- **`AnimatedSwitch`** — a `UIControl` / `NSControl` subclass for UIKit and AppKit
+- **`LottieSwitch`** — a SwiftUI `View` wrapper around `AnimatedSwitch`
+
+An animated switch has two states, **on** and **off**. When the user taps it, the state toggles and the corresponding animation segment plays. A haptic impact is generated on iOS.
+
+## AnimatedSwitch (UIKit / AppKit)
+
+`AnimatedSwitch` extends `AnimatedControl`, which extends `UIControl` (iOS/tvOS) or `NSControl` (macOS). It embeds a `LottieAnimationView` that fills its bounds.
+
+### Initialisers
+
+<ParamField path="animation" type="LottieAnimation?" required>
+  The `LottieAnimation` to display. Pass `nil` to create the switch without an animation and assign one later via the `animation` property.
+</ParamField>
+
+<ParamField path="configuration" type="LottieConfiguration" default="LottieConfiguration.shared">
+  Rendering engine and caching configuration.
+</ParamField>
+
+```swift
+let animation = LottieAnimation.named("toggle")
+let toggle = AnimatedSwitch(animation: animation)
+```
+
+### State
+
+<ResponseField name="isOn" type="Bool">
+  The current on/off state. Setting this property updates the animation immediately **without** playing a transition. Use `setIsOn(_:animated:shouldFireHaptics:)` when you want an animated transition.
+</ResponseField>
+
+```swift
+toggle.isOn = true  // Jumps to the "on" end frame, no animation
+```
+
+#### `setIsOn(_:animated:shouldFireHaptics:)`
+
+Programmatically change the switch state with full control over animation and haptics.
+
+<ParamField path="isOn" type="Bool" required>
+  The desired state.
+</ParamField>
+
+<ParamField path="animated" type="Bool" required>
+  When `true`, plays the transition animation. When `false`, jumps immediately to the end frame.
+</ParamField>
+
+<ParamField path="shouldFireHaptics" type="Bool" default="true">
+  When `true`, triggers a light haptic impact on iOS.
+</ParamField>
+
+```swift
+toggle.setIsOn(true, animated: true, shouldFireHaptics: false)
+```
+
+### Configuring animation ranges
+
+By default:
+- Toggling **on** plays from progress `0.0` → `1.0`
+- Toggling **off** plays from progress `1.0` → `0.0`
+
+Override these ranges with `setProgressForState`:
+
+```swift
+func setProgressForState(
+    fromProgress: AnimationProgressTime,
+    toProgress: AnimationProgressTime,
+    forOnState: Bool
+)
+```
+
+<ParamField path="fromProgress" type="AnimationProgressTime" required>
+  Normalised start progress (`0.0`–`1.0`) for this state transition.
+</ParamField>
+
+<ParamField path="toProgress" type="AnimationProgressTime" required>
+  Normalised end progress (`0.0`–`1.0`) for this state transition.
+</ParamField>
+
+<ParamField path="forOnState" type="Bool" required>
+  Pass `true` to configure the "on" animation, `false` for the "off" animation.
+</ParamField>
+
+```swift
+// On animation: first half of the timeline
+toggle.setProgressForState(fromProgress: 0.0, toProgress: 0.5, forOnState: true)
+// Off animation: second half
+toggle.setProgressForState(fromProgress: 0.5, toProgress: 1.0, forOnState: false)
+```
+
+### Cancellation behaviour
+
+If the user taps the switch while a transition is still playing, the `cancelBehavior` property determines what happens.
+
+<ResponseField name="cancelBehavior" type="CancelBehavior" default=".reverse">
+  Controls what happens when the switch is toggled during an in-flight animation.
+</ResponseField>
+
+| Value | Behaviour |
+|---|---|
+| `.reverse` | Plays the current animation in reverse from wherever it is |
+| `.none` | Leaves the animation unchanged |
+
+```swift
+toggle.cancelBehavior = .none
+```
+
+### Reacting to state changes
+
+<ResponseField name="stateUpdated" type="((_ isOn: Bool) -> Void)?">
+  A closure called every time `isOn` changes. Triggered for both user interaction and programmatic updates.
+</ResponseField>
+
+```swift
+toggle.stateUpdated = { isOn in
+    print("Switch is now: \(isOn ? "on" : "off")")
+}
+```
+
+On UIKit you can also use the standard target-action pattern:
+
+```swift
+toggle.addTarget(self, action: #selector(switchChanged(_:)), for: .valueChanged)
+
+@objc func switchChanged(_ sender: AnimatedSwitch) {
+    print("Is on: \(sender.isOn)")
+}
+```
+
+### Other properties
+
+<ResponseField name="animationView" type="LottieAnimationView">
+  The underlying animation view. Access it to configure rendering or apply value providers.
+</ResponseField>
+
+<ResponseField name="animation" type="LottieAnimation?">
+  The animation backing the control.
+</ResponseField>
+
+<ResponseField name="animationSpeed" type="CGFloat">
+  Playback speed multiplier. Defaults to `1`.
+</ResponseField>
+
+<ResponseField name="animateUpdateWhenChangingAnimation" type="Bool" default="true">
+  When `true`, plays the transition animation when the `animation` property is replaced with a new value.
+</ResponseField>
+
+### Dynamic properties
+
+```swift
+func setValueProvider(_ valueProvider: AnyValueProvider, keypath: AnimationKeypath)
+func removeValueProvider(for keypath: AnimationKeypath)
+```
+
+### UIKit example
+
+```swift
+import Lottie
+import UIKit
+
+class SettingsViewController: UIViewController {
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        guard let animation = LottieAnimation.named("dark_mode_toggle") else { return }
+        let toggle = AnimatedSwitch(animation: animation)
+        toggle.frame = CGRect(x: 100, y: 200, width: 80, height: 44)
+
+        // Map each half of the animation to a state
+        toggle.setProgressForState(fromProgress: 0.0, toProgress: 0.5, forOnState: true)
+        toggle.setProgressForState(fromProgress: 0.5, toProgress: 1.0, forOnState: false)
+
+        toggle.stateUpdated = { [weak self] isOn in
+            self?.applyTheme(dark: isOn)
+        }
+
+        view.addSubview(toggle)
+    }
+
+    func applyTheme(dark: Bool) {
+        overrideUserInterfaceStyle = dark ? .dark : .light
+    }
+}
+```
+
+---
+
+## LottieSwitch (SwiftUI)
+
+`LottieSwitch` is a SwiftUI `View` that wraps `AnimatedSwitch`. It uses a modifier-chain API consistent with other Lottie SwiftUI views.
+
+<Note>
+`LottieSwitch` is only available on platforms that support SwiftUI (`#if canImport(SwiftUI)`). It is available on iOS 13+, macOS 10.15+, tvOS 13+, and visionOS 1.0+.
+</Note>
+
+### Initialiser
+
+<ParamField path="animation" type="LottieAnimation?" required>
+  The animation to display inside the switch.
+</ParamField>
+
+```swift
+LottieSwitch(animation: LottieAnimation.named("toggle"))
+```
+
+### Modifiers
+
+All modifiers return a new copy of the view.
+
+#### `.isOn(_:)`
+
+Binds the switch state to a `Binding<Bool>`. The binding is updated whenever the user toggles the switch.
+
+<ParamField path="binding" type="Binding<Bool>" required>
+  Two-way binding for the on/off state.
+</ParamField>
+
+```swift
+@State private var isDarkMode = false
+
+LottieSwitch(animation: animation)
+    .isOn($isDarkMode)
+```
+
+#### `.onAnimation(fromProgress:toProgress:)`
+
+Configures the "on" transition segment.
+
+<ParamField path="onStartProgress" type="AnimationProgressTime" required>
+  Normalised start progress for the on animation. Defaults to `0.0`.
+</ParamField>
+
+<ParamField path="onEndProgress" type="AnimationProgressTime" required>
+  Normalised end progress for the on animation. Defaults to `1.0`.
+</ParamField>
+
+#### `.offAnimation(fromProgress:toProgress:)`
+
+Configures the "off" transition segment.
+
+<ParamField path="offStartProgress" type="AnimationProgressTime" required>
+  Normalised start progress for the off animation. Defaults to `1.0`.
+</ParamField>
+
+<ParamField path="offEndProgress" type="AnimationProgressTime" required>
+  Normalised end progress for the off animation. Defaults to `0.0`.
+</ParamField>
+
+```swift
+LottieSwitch(animation: animation)
+    .isOn($isDarkMode)
+    .onAnimation(fromProgress: 0.0, toProgress: 0.5)
+    .offAnimation(fromProgress: 0.5, toProgress: 1.0)
+```
+
+#### `.configuration(_:)`
+
+<ParamField path="configuration" type="LottieConfiguration" required>
+  Overrides rendering engine and caching settings for this switch.
+</ParamField>
+
+#### `.valueProvider(_:for:)`
+
+Registers a value provider for the given keypath. The provider must be `Equatable`.
+
+<ParamField path="valueProvider" type="AnyValueProvider & Equatable" required>
+  The value provider to register.
+</ParamField>
+
+<ParamField path="keypath" type="AnimationKeypath" required>
+  The animation keypath to target.
+</ParamField>
+
+#### `.configure(_:)`
+
+A low-level escape hatch providing direct access to the underlying `AnimatedSwitch`.
+
+<ParamField path="configure" type="@escaping (AnimatedSwitch) -> Void" required>
+  Called whenever the view is updated.
+</ParamField>
+
+### SwiftUI example
+
+```swift
+import Lottie
+import SwiftUI
+
+struct NotificationsToggle: View {
+    @State private var notificationsEnabled = false
+    let animation = LottieAnimation.named("notification_toggle")
+
+    var body: some View {
+        VStack {
+            Text(notificationsEnabled ? "Notifications on" : "Notifications off")
+
+            LottieSwitch(animation: animation)
+                .isOn($notificationsEnabled)
+                .onAnimation(fromProgress: 0.0, toProgress: 1.0)
+                .offAnimation(fromProgress: 1.0, toProgress: 0.0)
+                .frame(width: 100, height: 56)
+        }
+    }
+}
+```

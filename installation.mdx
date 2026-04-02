@@ -1,0 +1,134 @@
+---
+title: "Installation"
+description: "Add Lottie to your iOS, macOS, tvOS, or visionOS project using Swift Package Manager, CocoaPods, Carthage, or directly via the Xcode project."
+---
+
+Lottie supports Swift Package Manager, CocoaPods, and Carthage. All three methods produce the same `import Lottie` module in your source files.
+
+<Tabs>
+  <Tab title="Swift Package Manager">
+    Swift Package Manager is the recommended way to add Lottie to your project. Lottie provides a dedicated lightweight repo — [lottie-spm](https://github.com/airbnb/lottie-spm) — specifically for SPM consumers.
+
+    <Note>
+      Use `https://github.com/airbnb/lottie-spm.git` (not the main `lottie-ios` repo) when adding the package in Xcode or `Package.swift`. The main `lottie-ios` repository is 300+ MB because it includes the full git history, sample animations, and test snapshots. SPM always downloads the complete repository, so that download would be slow. The `lottie-spm` repo is under 500 KB — it contains only a pointer to the precompiled XCFramework from the latest release (~8 MB). If you need to include Lottie source directly, you can reference `https://github.com/airbnb/lottie-ios.git` instead.
+    </Note>
+
+    <Steps>
+      <Step title="Add the package in Xcode">
+        1. Open your project in Xcode.
+        2. Select **File → Add Package Dependencies…**
+        3. Enter the following URL in the search field:
+           ```
+           https://github.com/airbnb/lottie-spm.git
+           ```
+        4. Choose **Up to Next Major Version** starting from `4.5.2` and click **Add Package**.
+        5. Select the **Lottie** library and add it to your target.
+      </Step>
+      <Step title="Or add to Package.swift">
+        If your project is itself a Swift package, add Lottie as a dependency in your `Package.swift`:
+
+        ```swift
+        dependencies: [
+            .package(url: "https://github.com/airbnb/lottie-spm.git", from: "4.5.2"),
+        ],
+        targets: [
+            .target(
+                name: "MyTarget",
+                dependencies: ["Lottie"]
+            ),
+        ]
+        ```
+      </Step>
+      <Step title="Import Lottie">
+        ```swift
+        import Lottie
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CocoaPods">
+    <Steps>
+      <Step title="Add the pod to your Podfile">
+        ```ruby
+        pod 'lottie-ios'
+        ```
+      </Step>
+      <Step title="Install the pod">
+        ```ruby
+        pod install
+        ```
+      </Step>
+      <Step title="Open the workspace and import Lottie">
+        Open the generated `.xcworkspace` file, then add the import to any Swift file that uses Lottie:
+
+        ```swift
+        import Lottie
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Carthage">
+    <Steps>
+      <Step title="Add Lottie to your Cartfile">
+        ```
+        github "airbnb/lottie-ios" "master"
+        ```
+      </Step>
+      <Step title="Run Carthage update">
+        ```bash
+        carthage update
+        ```
+      </Step>
+      <Step title="Link the framework">
+        In your application target's **General** tab, under **Frameworks, Libraries, and Embedded Content**, drag and drop `lottie-ios.framework` from the `Carthage/Build/iOS` directory that `carthage update` produced.
+      </Step>
+      <Step title="Import Lottie">
+        ```swift
+        import Lottie
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Direct / Xcode Project">
+    <Steps>
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/airbnb/lottie-ios.git
+        ```
+      </Step>
+      <Step title="Add Lottie.xcodeproj to your workspace">
+        Drag `Lottie.xcodeproj` into your Xcode workspace or project navigator. This lets you build Lottie as either a dynamic or static library alongside your app target.
+      </Step>
+      <Step title="Link the built product">
+        Add the built `Lottie.framework` (or `Lottie.xcframework`) to your target's **Frameworks, Libraries, and Embedded Content** section in the **General** tab.
+      </Step>
+      <Step title="Import Lottie">
+        ```swift
+        import Lottie
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## SPM: Static vs Dynamic Linking
+
+By default, SPM builds Lottie as a static library (the `Lottie` product). If you have a modular project where multiple packages or frameworks depend on Lottie and you need to avoid duplicate symbol errors, use the `Lottie-Dynamic` product instead:
+
+```swift
+.product(name: "Lottie-Dynamic", package: "lottie-spm")
+```
+
+## Verifying the Installation
+
+After installing, verify everything is working by adding a quick import and checking that Xcode can resolve the `LottieAnimationView` type:
+
+```swift
+import Lottie
+
+// If this compiles, Lottie is installed correctly.
+let _ = LottieAnimationView()
+```

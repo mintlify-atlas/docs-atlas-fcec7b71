@@ -1,0 +1,257 @@
+---
+title: "SwiftUI integration"
+description: "Use Lottie animations in SwiftUI with LottieView"
+---
+
+`LottieView` is a SwiftUI view that wraps `LottieAnimationView`. It follows the same declarative, value-type pattern as other SwiftUI views: modifiers return a new copy of the view with the updated configuration applied.
+
+## Initializers
+
+`LottieView` provides both synchronous and asynchronous initializers depending on how your animation data is available.
+
+<Tabs>
+  <Tab title="Synchronous">
+    Use these when you already have an animation model in memory.
+
+    ```swift
+    // From a LottieAnimation model
+    let animation = LottieAnimation.named("Confetti")
+    LottieView(animation: animation)
+
+    // From a DotLottieFile model
+    // Avoid this with SynchronouslyBlockingCurrentThread APIs — prefer the async initializer below
+    let dotLottieFile = try! DotLottieFile.named("Confetti")
+    LottieView(dotLottieFile: dotLottieFile)
+    ```
+  </Tab>
+  <Tab title="Async">
+    Use these to load an animation on appearance without blocking the main thread.
+    The closure is called exactly once in `onAppear`. To reload later, use `.reloadAnimationTrigger(_:)`.
+
+    ```swift
+    // Async LottieAnimation — no placeholder
+    LottieView {
+      try await LottieAnimation.loadedFrom(url: url)
+    }
+
+    // Async LottieAnimation — with placeholder view while loading
+    LottieView {
+      try await LottieAnimation.loadedFrom(url: url)
+    } placeholder: {
+      ProgressView()
+    }
+
+    // Async DotLottieFile — recommended for .lottie files
+    LottieView {
+      try await DotLottieFile.named("Confetti")
+    }
+
+    // Async DotLottieFile with placeholder
+    LottieView {
+      try await DotLottieFile.named("Confetti")
+    } placeholder: {
+      ProgressView()
+    }
+    ```
+
+    <Note>
+    When the animation is loading, the placeholder is shown. Once the animation loads, the placeholder fades out and the animation becomes visible.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Sizing
+
+By default, `LottieView` reports its natural animation size as its intrinsic content size. Use one of the sizing modifiers to change this behavior.
+
+```swift
+// Scale the animation to fill the space offered by the parent (respects aspect ratio)
+LottieView(animation: animation)
+  .resizable()
+
+// Use the animation's intrinsic size, up to the proposed size
+LottieView(animation: animation)
+  .intrinsicSize()
+```
+
+## Playback
+
+All playback modifiers return a new copy of the view and are composable.
+
+### Playback mode
+
+```swift
+// Loop from start to end indefinitely
+LottieView(animation: animation)
+  .looping()
+
+// Play once from the current frame to the end
+LottieView(animation: animation)
+  .playing()
+
+// Play with a specific loop mode
+LottieView(animation: animation)
+  .playing(loopMode: .repeat(3))
+
+// Use the full LottiePlaybackMode API
+LottieView(animation: animation)
+  .playbackMode(.playing(.fromProgress(0, toProgress: 0.5, loopMode: .playOnce)))
+
+// Pause at a specific state
+LottieView(animation: animation)
+  .paused(at: .progress(0.5))
+```
+
+### Playback speed
+
+```swift
+LottieView(animation: animation)
+  .looping()
+  .animationSpeed(1.5)
+```
+
+### Completion handler
+
+```swift
+LottieView(animation: animation)
+  .playing()
+  .animationDidFinish { completed in
+    if completed {
+      print("Animation finished")
+    }
+  }
+```
+
+## Background behavior
+
+Control what happens when the app moves to the background.
+
+```swift
+LottieView(animation: animation)
+  .looping()
+  .backgroundBehavior(.pauseAndRestore)
+```
+
+See the [playback control guide](/guides/playback-control) for the full list of `LottieBackgroundBehavior` values.
+
+## Configure the underlying view
+
+Use `.configure(_:)` to directly set properties on the underlying `LottieAnimationView`. This is an escape hatch for settings not exposed as dedicated modifiers.
+
+```swift
+// Set a property via keypath
+LottieView(animation: animation)
+  .configure(\.respectAnimationFrameRate, to: true)
+
+// Use a closure for more complex configuration
+LottieView(animation: animation)
+  .configure { animationView in
+    animationView.renderingEngine = .coreAnimation
+  }
+```
+
+<Warning>
+The `.configure(_:)` closure runs on every SwiftUI render pass. Avoid triggering expensive side effects inside it.
+</Warning>
+
+## Reload trigger
+
+Call `.reloadAnimationTrigger(_:)` to re-invoke the async loading closure when a value changes. This only works with async initializers.
+
+```swift
+@State private var animationID: String = "Confetti"
+
+LottieView {
+  try await DotLottieFile.named(animationID)
+} placeholder: {
+  ProgressView()
+}
+.resizable()
+.looping()
+.reloadAnimationTrigger(animationID, showPlaceholder: true)
+```
+
+When `showPlaceholder` is `true`, the current animation is removed before loading starts and the placeholder is shown. When `false`, the previous animation remains visible until the new one loads.
+
+## Tracking realtime progress
+
+Use `.getRealtimeAnimationProgress(_:)` or `.getRealtimeAnimationFrame(_:)` to receive a binding updated every frame. These wrap `LottieView` in a `TimelineView` with the `.animation` schedule.
+
+```swift
+@State private var progress: AnimationProgressTime = 0
+
+LottieView(animation: animation)
+  .looping()
+  .getRealtimeAnimationProgress($progress)
+
+Text("Progress: \(progress, specifier: "%.2f")")
+```
+
+<Note>
+These modifiers trigger a state update every frame and may affect performance. Pass `nil` to pause the `TimelineView` when you no longer need updates.
+</Note>
+
+## Complete examples
+
+<CodeGroup>
+
+```swift Basic looping animation
+import SwiftUI
+import Lottie
+
+struct ConfettiView: View {
+  var body: some View {
+    LottieView(animation: .named("Confetti"))
+      .resizable()
+      .looping()
+  }
+}
+```
+
+```swift Async loading with placeholder
+import SwiftUI
+import Lottie
+
+struct RemoteAnimationView: View {
+  let url: URL
+
+  var body: some View {
+    LottieView {
+      try await LottieAnimation.loadedFrom(url: url)
+    } placeholder: {
+      ProgressView()
+        .frame(width: 44, height: 44)
+    }
+    .resizable()
+    .looping()
+  }
+}
+```
+
+```swift Playback control with state
+import SwiftUI
+import Lottie
+
+struct PlaybackDemoView: View {
+  @State private var isPlaying = false
+
+  var body: some View {
+    VStack {
+      LottieView(animation: .named("Rocket"))
+        .resizable()
+        .frame(width: 200, height: 200)
+        .playbackMode(isPlaying
+          ? .playing(.fromProgress(0, toProgress: 1, loopMode: .loop))
+          : .paused(at: .currentFrame)
+        )
+        .animationSpeed(1.25)
+
+      Button(isPlaying ? "Pause" : "Play") {
+        isPlaying.toggle()
+      }
+    }
+  }
+}
+```
+
+</CodeGroup>

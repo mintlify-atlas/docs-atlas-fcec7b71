@@ -1,0 +1,285 @@
+---
+title: "LottieConfiguration"
+description: "Global configuration options for Lottie animations"
+---
+
+`LottieConfiguration` is a value type (`struct`) that controls how Lottie animations are decoded, rendered, and played across your entire app. Changes to `LottieConfiguration.shared` apply to all `LottieAnimationView` instances that have not been given their own configuration.
+
+## Static members
+
+<ParamField path="LottieConfiguration.shared" type="LottieConfiguration">
+  The global shared configuration instance. All `LottieAnimationView`s use this configuration by default. Mutate this instance at app startup to change app-wide defaults.
+</ParamField>
+
+<ParamField path="LottieConfiguration.defaultURLSession" type="LottieURLSession" default="URLSession.shared">
+  The URL session used to load remote Lottie animations. Replace this with a custom `LottieURLSession` implementation to intercept network requests, for example to disable networking during snapshot tests.
+</ParamField>
+
+## Initializer
+
+```swift
+public init(
+  renderingEngine: RenderingEngineOption = .automatic,
+  decodingStrategy: DecodingStrategy = .dictionaryBased,
+  colorSpace: CGColorSpace = CGColorSpaceCreateDeviceRGB(),
+  reducedMotionOption: ReducedMotionOption = .systemReducedMotionToggle
+)
+```
+
+## Instance properties
+
+<ParamField path="renderingEngine" type="RenderingEngineOption" default=".automatic">
+  The rendering engine used to display animations. Defaults to `.automatic`, which uses the Core Animation engine for supported animations and falls back to the Main Thread engine when needed.
+</ParamField>
+
+<ParamField path="decodingStrategy" type="DecodingStrategy" default=".dictionaryBased">
+  The strategy used when parsing animation JSON files. `.dictionaryBased` is at least 2–3× faster than `.legacyCodable` and is the default since Lottie 4.x.
+</ParamField>
+
+<ParamField path="reducedMotionOption" type="ReducedMotionOption" default=".systemReducedMotionToggle">
+  Controls how animations behave when the user or system has enabled "reduced motion". Defaults to `.systemReducedMotionToggle`, which reads `UIAccessibility.isReduceMotionEnabled` at playback time.
+</ParamField>
+
+<ParamField path="colorSpace" type="CGColorSpace" default="CGColorSpaceCreateDeviceRGB()">
+  The color space used when rendering animation layers.
+</ParamField>
+
+---
+
+## RenderingEngineOption
+
+Controls which rendering implementation Lottie uses.
+
+```swift
+public enum RenderingEngineOption: Hashable {
+  case automatic
+  case specific(RenderingEngine)
+
+  public static var mainThread: RenderingEngineOption   // .specific(.mainThread)
+  public static var coreAnimation: RenderingEngineOption // .specific(.coreAnimation)
+}
+```
+
+<AccordionGroup>
+  <Accordion title=".automatic">
+    Uses the Core Animation engine for animations whose features are fully supported, and falls back to the Main Thread engine for animations that require features not available in Core Animation. **Recommended default** — prefer this over explicitly choosing an engine.
+  </Accordion>
+  <Accordion title=".mainThread">
+    Static convenience for `.specific(.mainThread)`. Uses the Main Thread rendering engine, which supports every Lottie feature but runs on the main thread and may drop frames when the CPU is busy.
+  </Accordion>
+  <Accordion title=".coreAnimation">
+    Static convenience for `.specific(.coreAnimation)`. Uses the Core Animation rendering engine, which has better performance characteristics but does not support all Lottie features. Prefer `.automatic` unless you have a specific reason to force this engine.
+  </Accordion>
+  <Accordion title=".specific(_ engine: RenderingEngine)">
+    Explicitly specify a `RenderingEngine` value. Use this when you need precise control over which engine is used, for example in performance benchmarks or compatibility testing.
+  </Accordion>
+</AccordionGroup>
+
+### RenderingEngine
+
+The concrete engine values used with `.specific(...)`.
+
+```swift
+public enum RenderingEngine: Hashable {
+  case mainThread
+  case coreAnimation
+}
+```
+
+| Case | Raw value | Description |
+|------|-----------|-------------|
+| `.mainThread` | `"Main Thread"` | Runs on the main thread. Supports all Lottie features. |
+| `.coreAnimation` | `"Core Animation"` | Runs entirely via Core Animation layers. Better performance, limited feature support. |
+
+---
+
+## DecodingStrategy
+
+Controls how animation JSON is deserialized.
+
+```swift
+public enum DecodingStrategy: Hashable {
+  case legacyCodable
+  case dictionaryBased
+}
+```
+
+<AccordionGroup>
+  <Accordion title=".dictionaryBased (default)">
+    Manually deserializes a `[String: Any]` dictionary into a `LottieAnimation`. At least 2–3× faster than `.legacyCodable`. This is the default since Lottie 4.x and should be used in all new projects.
+  </Accordion>
+  <Accordion title=".legacyCodable">
+    Uses `Codable` to decode animation JSON. This was the default in Lottie 3 but is considerably slower. Consider it soft-deprecated — only use it if you encounter a compatibility issue with `.dictionaryBased`.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## ReducedMotionOption
+
+Controls animation behavior when the user has enabled a "reduced motion" preference.
+
+```swift
+public enum ReducedMotionOption {
+  case specific(ReducedMotionMode)
+  case dynamic(ReducedMotionOptionProvider, dataID: AnyHashable)
+}
+```
+
+<AccordionGroup>
+  <Accordion title=".systemReducedMotionToggle (default)">
+    Dynamically reads `UIAccessibility.isReduceMotionEnabled` each time an animation begins. Returns `.reducedMotion` when the system option is enabled, and `.standardMotion` otherwise. This is the default for `LottieConfiguration`.
+  </Accordion>
+  <Accordion title=".standardMotion">
+    Static convenience for `.specific(.standardMotion)`. Animations always play normally with no overrides, regardless of any system setting.
+  </Accordion>
+  <Accordion title=".reducedMotion">
+    Static convenience for `.specific(.reducedMotion)`. Animations that include a marker named `"reduced motion"`, `"reducedMotion"`, or `"reduced_motion"` (case-insensitive) will play that marker segment. Animations without such a marker play normally.
+  </Accordion>
+  <Accordion title=".disabledMotion">
+    Static convenience for `.specific(.disabledMotion)`. All animations are disabled and render statically at their first frame. Useful for snapshot testing where animation non-determinism can cause flaky results.
+  </Accordion>
+  <Accordion title=".specific(_ mode: ReducedMotionMode)">
+    Always applies the given `ReducedMotionMode` value, ignoring any dynamic system state.
+  </Accordion>
+  <Accordion title=".dynamic(_ provider: ReducedMotionOptionProvider, dataID:)">
+    Evaluates a custom `ReducedMotionOptionProvider` each time an animation begins. Provide a `dataID: AnyHashable` to satisfy `LottieConfiguration`'s `Hashable` requirement.
+  </Accordion>
+</AccordionGroup>
+
+### ReducedMotionMode
+
+The concrete motion modes used with `.specific(...)`.
+
+```swift
+public enum ReducedMotionMode: Hashable {
+  case standardMotion
+  case reducedMotion
+  case disabledMotion
+}
+```
+
+### ReducedMotionOptionProvider
+
+A protocol for supplying a dynamic reduced-motion mode at playback time.
+
+```swift
+public protocol ReducedMotionOptionProvider {
+  var currentReducedMotionMode: ReducedMotionMode { get }
+}
+```
+
+Implement this protocol to wire Lottie into your own accessibility or A/B testing system:
+
+```swift
+struct MyMotionProvider: ReducedMotionOptionProvider {
+  var currentReducedMotionMode: ReducedMotionMode {
+    MyApp.featureFlags.reduceMotion ? .reducedMotion : .standardMotion
+  }
+}
+
+LottieConfiguration.shared.reducedMotionOption = .dynamic(
+  MyMotionProvider(),
+  dataID: "my-motion-provider"
+)
+```
+
+---
+
+## LottieURLSession
+
+A protocol that abstracts URL session functionality for loading remote Lottie animations.
+
+```swift
+public protocol LottieURLSession: Sendable {
+  func lottieDataTask(
+    with url: URL,
+    completionHandler: @escaping @Sendable (Data?, URLResponse?, (any Error)?) -> Void
+  ) -> URLSessionDataTask?
+}
+```
+
+`URLSession` already conforms to this protocol, so no changes are needed for standard networking. Provide a custom implementation to:
+
+- Block all network requests during screenshot or unit tests
+- Route requests through a custom caching or authentication layer
+- Mock responses in a preview or demo environment
+
+```swift
+struct NoOpURLSession: LottieURLSession {
+  func lottieDataTask(
+    with url: URL,
+    completionHandler: @escaping @Sendable (Data?, URLResponse?, (any Error)?) -> Void
+  ) -> URLSessionDataTask? {
+    // Silently drop the request — useful in UI tests
+    return nil
+  }
+}
+
+LottieConfiguration.defaultURLSession = NoOpURLSession()
+```
+
+---
+
+## LottieLogger
+
+`LottieLogger` is a shared logger that lets you intercept Lottie's internal assertions and warning messages and pipe them into your own logging system.
+
+```swift
+public final class LottieLogger {
+  public static var shared: LottieLogger
+
+  public func assert(_ condition: @autoclosure () -> Bool, _ message: @autoclosure () -> String, ...)
+  public func assertionFailure(_ message: @autoclosure () -> String, ...)
+  public func warn(_ message: @autoclosure () -> String, ...)
+  public func info(_ message: @autoclosure () -> String)
+}
+```
+
+Replace `LottieLogger.shared` with a custom instance to forward log events:
+
+```swift
+LottieLogger.shared = LottieLogger(
+  warn: { message, fileID, line in
+    MyAnalytics.log("[Lottie warn] \(message()) — \(fileID):\(line)")
+  }
+)
+```
+
+<Tip>
+  Use `LottieLogger.printToConsole` as a drop-in replacement that always prints to the console rather than calling `assert` or `assertionFailure`. This prevents crashes in debug builds while still surfacing all Lottie messages.
+</Tip>
+
+---
+
+## Example: customizing global configuration
+
+Configure Lottie once at app launch, before any animations are loaded:
+
+```swift
+import Lottie
+
+@main
+struct MyApp: App {
+  init() {
+    // Force the Core Animation engine for all animations
+    LottieConfiguration.shared.renderingEngine = .specific(.coreAnimation)
+
+    // Always respect the system reduced-motion preference
+    LottieConfiguration.shared.reducedMotionOption = .systemReducedMotionToggle
+
+    // Use the faster dictionary-based decoder (already the default)
+    LottieConfiguration.shared.decodingStrategy = .dictionaryBased
+
+    // Disable remote animation loading during snapshot tests
+    #if SNAPSHOT_TESTS
+    LottieConfiguration.defaultURLSession = NoOpURLSession()
+    LottieConfiguration.shared.reducedMotionOption = .disabledMotion
+    #endif
+  }
+
+  var body: some Scene {
+    WindowGroup { ContentView() }
+  }
+}
+```

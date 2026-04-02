@@ -1,0 +1,175 @@
+---
+title: ".lottie files"
+description: "Load and configure .lottie compressed animation bundles"
+---
+
+A `.lottie` file is a ZIP archive that packages one or more Lottie JSON animations together with their image assets into a single file. This makes distribution and loading more convenient than managing loose JSON and image directories.
+
+Each animation entry inside the archive carries a `DotLottieConfiguration` that specifies its loop mode, playback speed, and image provider. Lottie reads these settings automatically when you load the file.
+
+## DotLottieFile
+
+`DotLottieFile` represents a parsed `.lottie` archive. It exposes an `animations` array of `DotLottieFile.Animation` values, each containing a `LottieAnimation` and its associated `DotLottieConfiguration`.
+
+```swift
+public final class DotLottieFile {
+  public struct Animation {
+    public let animation: LottieAnimation
+    public let configuration: DotLottieConfiguration
+  }
+
+  public private(set) var animations: [Animation]
+}
+```
+
+## Loading methods
+
+### From a bundle (async/await)
+
+```swift
+// Load "StarAnimation.lottie" from the main bundle
+let file = try await DotLottieFile.named("StarAnimation")
+
+// With a subdirectory and custom bundle
+let file = try await DotLottieFile.named(
+  "StarAnimation",
+  bundle: Bundle(for: MyClass.self),
+  subdirectory: "Animations"
+)
+```
+
+### From a bundle (callback)
+
+```swift
+DotLottieFile.named("StarAnimation") { result in
+  switch result {
+  case .success(let file):
+    // use file
+  case .failure(let error):
+    print("Failed to load: \(error)")
+  }
+}
+```
+
+### From a file path (async/await)
+
+```swift
+let file = try await DotLottieFile.loadedFrom(filepath: "/path/to/StarAnimation.lottie")
+```
+
+### From a file path (callback)
+
+```swift
+DotLottieFile.loadedFrom(filepath: "/path/to/StarAnimation.lottie") { result in
+  switch result {
+  case .success(let file):
+    // use file
+  case .failure(let error):
+    print("Failed to load: \(error)")
+  }
+}
+```
+
+### From an asset catalog (async/await)
+
+```swift
+let file = try await DotLottieFile.asset(named: "StarAnimation")
+```
+
+### From a URL (async/await)
+
+```swift
+let url = URL(string: "https://example.com/animations/star.lottie")!
+let file = try await DotLottieFile.loadedFrom(url: url)
+```
+
+### From a URL (callback)
+
+```swift
+let url = URL(string: "https://example.com/animations/star.lottie")!
+
+let task = DotLottieFile.loadedFrom(url: url) { result in
+  switch result {
+  case .success(let file):
+    // use file
+  case .failure(let error):
+    print("Failed to load: \(error)")
+  }
+}
+
+// Cancel if needed
+task?.cancel()
+```
+
+### From Data (async/await)
+
+```swift
+let data: Data = // ... downloaded or read from disk
+let file = try await DotLottieFile.loadedFrom(data: data, filename: "StarAnimation")
+```
+
+<Note>
+The `SynchronouslyBlockingCurrentThread` nested type exposes synchronous variants of these methods. They must not be called on the main thread, as they block the calling thread until the file is fully decompressed.
+</Note>
+
+## DotLottieConfiguration
+
+Each animation inside a `.lottie` file has a `DotLottieConfiguration` embedded in the archive's manifest:
+
+```swift
+public struct DotLottieConfiguration {
+  /// Unique identifier for this animation within the file
+  public var id: String
+
+  /// Loop behavior for this animation
+  public var loopMode: LottieLoopMode
+
+  /// Playback speed multiplier
+  public var speed: Double
+
+  /// Image provider for assets bundled in the .lottie archive
+  public var imageProvider: AnimationImageProvider?
+}
+```
+
+## Loading into LottieAnimationView
+
+### Via initializer
+
+```swift
+let file = try await DotLottieFile.named("StarAnimation")
+
+let animationView = LottieAnimationView(dotLottie: file)
+animationView.play()
+```
+
+To load a specific animation by ID within the file:
+
+```swift
+let animationView = LottieAnimationView(dotLottie: file, animationId: "scene_2")
+```
+
+### After initialization
+
+```swift
+let animationView = LottieAnimationView()
+
+let file = try await DotLottieFile.named("StarAnimation")
+animationView.loadAnimation(from: file)
+
+// Or load by index
+animationView.loadAnimation(atIndex: 1, from: file)
+```
+
+The `loopMode`, `animationSpeed`, and `imageProvider` on the view are automatically configured from the `DotLottieConfiguration` embedded in the file.
+
+## Loading into LottieView (SwiftUI)
+
+See the [SwiftUI integration](/guides/swiftui) guide for full details. The short form is:
+
+```swift
+LottieView {
+  try await DotLottieFile.named("StarAnimation")
+}
+.looping()
+```

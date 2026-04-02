@@ -1,0 +1,306 @@
+---
+title: "Value providers"
+description: "Supply dynamic values for animation properties at runtime"
+---
+
+Value providers let you override animation property values at runtime without modifying the source JSON. Every frame, `LottieAnimationView` queries each registered provider and, if the provider reports an update, reads the new value and re-renders that portion of the animation.
+
+## AnyValueProvider protocol
+
+All concrete providers conform to `AnyValueProvider`.
+
+<ResponseField name="valueType" type="Any.Type" required>
+  The Swift type this provider produces (e.g. `LottieColor.self`, `LottieVector1D.self`).
+</ResponseField>
+
+<ResponseField name="typeErasedStorage" type="AnyValueProviderStorage" required>
+  The type-erased backing storage. Lottie uses this to read values without knowing the concrete provider type.
+</ResponseField>
+
+<ResponseField name="hasUpdate(frame:)" type="(AnimationFrameTime) -> Bool" required>
+  Called every frame. Return `true` when the provider has a new value to apply. Block-based providers always return `true`.
+</ResponseField>
+
+```swift
+func value(frame: AnimationFrameTime) -> Any
+```
+
+A convenience default implementation is provided; it delegates to `typeErasedStorage`.
+
+### Storage modes
+
+Every provider is backed by one of three storage modes:
+
+| Mode | Description | Rendering engine support |
+|---|---|---|
+| `.singleValue(T)` | A single constant value used on every frame | Main thread + Core Animation |
+| `.keyframes([Keyframe<T>])` | A sequence of timed keyframes | Main thread + Core Animation |
+| `.closure((AnimationFrameTime) -> T)` | A block called on every frame | Main thread only |
+
+<Warning>
+Block-based (closure) providers are not compatible with the Core Animation rendering engine. If you set `LottieConfiguration.renderingEngine = .coreAnimation`, use the constant-value or keyframe initialisers instead.
+</Warning>
+
+---
+
+## ColorValueProvider
+
+Provides a `LottieColor` value (mapped from `CGColor`) for fill and stroke color properties.
+
+### Initialisers
+
+<ParamField path="color" type="LottieColor" required>
+  A constant color applied on every frame.
+</ParamField>
+
+```swift
+let redProvider = ColorValueProvider(LottieColor(r: 1, g: 0, b: 0, a: 1))
+```
+
+---
+
+<ParamField path="block" type="@escaping (CGFloat) -> LottieColor" required>
+  A closure that receives the current animation frame time as a `CGFloat` and returns a `LottieColor`. Called every frame. Only supported on the main-thread rendering engine.
+</ParamField>
+
+```swift
+let cyclingProvider = ColorValueProvider { frame in
+    // Hue shifts based on current frame
+    let hue = (frame / 60).truncatingRemainder(dividingBy: 1.0)
+    return LottieColor(r: hue, g: 1.0 - hue, b: 0.5, a: 1.0)
+}
+```
+
+---
+
+<ParamField path="keyframes" type="[Keyframe<LottieColor>]" required>
+  An array of timed `Keyframe` values. Lottie interpolates between them, matching the timing of the original animation data.
+</ParamField>
+
+```swift
+let keyframeProvider = ColorValueProvider([
+    Keyframe(value: LottieColor(r: 1, g: 0, b: 0, a: 1), time: 0),
+    Keyframe(value: LottieColor(r: 0, g: 0, b: 1, a: 1), time: 60),
+])
+```
+
+### Mutable property
+
+<ResponseField name="color" type="LottieColor">
+  Read/write. Updating this property marks the provider as needing an update, which will be picked up on the next rendered frame.
+</ResponseField>
+
+---
+
+## FloatValueProvider
+
+Provides a `CGFloat` value for scalar properties such as opacity, rotation, and stroke width.
+
+### Initialisers
+
+<ParamField path="float" type="CGFloat" required>
+  A constant scalar value used on every frame.
+</ParamField>
+
+```swift
+// Set opacity to 50%
+let halfOpacity = FloatValueProvider(0.5)
+```
+
+---
+
+<ParamField path="block" type="@escaping (CGFloat) -> CGFloat" required>
+  A closure that receives the current frame time and returns a `CGFloat`. Only supported on the main-thread rendering engine.
+</ParamField>
+
+```swift
+let pulsingOpacity = FloatValueProvider { frame in
+    // Oscillate between 0 and 1 over 60 frames
+    return abs(sin(Double(frame) * .pi / 60))
+}
+```
+
+### Mutable property
+
+<ResponseField name="float" type="CGFloat">
+  Read/write. Updating triggers a re-render on the next frame.
+</ResponseField>
+
+---
+
+## GradientValueProvider
+
+Provides gradient color stop data for gradient fill and stroke properties.
+
+### Initialisers
+
+<ParamField path="colors" type="[LottieColor]" required>
+  An array of colors that define the gradient stops.
+</ParamField>
+
+<ParamField path="locations" type="[Double]" default="[]">
+  Optional array of stop positions in the range `0.0`–`1.0`, one per color. When omitted, stops are distributed evenly.
+</ParamField>
+
+```swift
+// Evenly distributed stops
+let gradientProvider = GradientValueProvider(
+    [
+        LottieColor(r: 1, g: 0.2, b: 0.2, a: 1),
+        LottieColor(r: 0.2, g: 0.2, b: 1, a: 1),
+    ]
+)
+
+// Explicit locations
+let skewedGradient = GradientValueProvider(
+    [
+        LottieColor(r: 1, g: 0.2, b: 0.2, a: 1),
+        LottieColor(r: 0.2, g: 0.2, b: 1, a: 1),
+    ],
+    locations: [0.0, 0.8]
+)
+```
+
+---
+
+<ParamField path="block" type="@escaping (CGFloat) -> [LottieColor]" required>
+  A closure returning the color array for a given frame.
+</ParamField>
+
+<ParamField path="locations" type="((CGFloat) -> [Double])?" default="nil">
+  An optional separate closure that returns the stop positions for each frame.
+</ParamField>
+
+```swift
+let animatedGradient = GradientValueProvider(
+    block: { frame in
+        let t = Double(frame) / 60.0
+        return [
+            LottieColor(r: t, g: 0, b: 1 - t, a: 1),
+            LottieColor(r: 1 - t, g: 0, b: t, a: 1),
+        ]
+    },
+    locations: { _ in [0.0, 1.0] }
+)
+```
+
+### Mutable properties
+
+<ResponseField name="colors" type="[LottieColor]">
+  The current color stops. Updating this property triggers a re-render.
+</ResponseField>
+
+<ResponseField name="locations" type="[Double]">
+  The current stop positions. Updating this property triggers a re-render.
+</ResponseField>
+
+---
+
+## PointValueProvider
+
+Provides a `CGPoint` value for position and anchor-point properties.
+
+### Initialisers
+
+<ParamField path="point" type="CGPoint" required>
+  A constant point used on every frame.
+</ParamField>
+
+```swift
+let positionProvider = PointValueProvider(CGPoint(x: 100, y: 200))
+```
+
+---
+
+<ParamField path="block" type="@escaping (CGFloat) -> CGPoint" required>
+  A closure that returns a `CGPoint` for the given frame time. Only supported on the main-thread rendering engine.
+</ParamField>
+
+```swift
+let orbitingPoint = PointValueProvider { frame in
+    let angle = Double(frame) * .pi / 30
+    return CGPoint(x: cos(angle) * 50 + 100, y: sin(angle) * 50 + 100)
+}
+```
+
+### Mutable property
+
+<ResponseField name="point" type="CGPoint">
+  Read/write. Updating triggers a re-render on the next frame.
+</ResponseField>
+
+---
+
+## SizeValueProvider
+
+Provides a `CGSize` value for size properties.
+
+### Initialisers
+
+<ParamField path="size" type="CGSize" required>
+  A constant size used on every frame.
+</ParamField>
+
+```swift
+let sizeProvider = SizeValueProvider(CGSize(width: 200, height: 100))
+```
+
+---
+
+<ParamField path="block" type="@escaping (CGFloat) -> CGSize" required>
+  A closure that returns a `CGSize` for the given frame time. Only supported on the main-thread rendering engine.
+</ParamField>
+
+```swift
+let growingSize = SizeValueProvider { frame in
+    let scale = 1.0 + Double(frame) / 120.0
+    return CGSize(width: 100 * scale, height: 100 * scale)
+}
+```
+
+### Mutable property
+
+<ResponseField name="size" type="CGSize">
+  Read/write. Updating triggers a re-render on the next frame.
+</ResponseField>
+
+---
+
+## Complete example
+
+The following example combines `AnimationKeypath` and `ColorValueProvider` to tint every fill in an animation with a brand color, then updates that color when the user taps a button.
+
+```swift
+import Lottie
+import UIKit
+
+class BirdViewController: UIViewController {
+
+    let animationView = LottieAnimationView(name: "bird")
+    let fillProvider = ColorValueProvider(LottieColor(r: 0.2, g: 0.5, b: 1.0, a: 1.0))
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        view.addSubview(animationView)
+        animationView.frame = view.bounds
+        animationView.contentMode = .scaleAspectFit
+        animationView.loopMode = .loop
+
+        // Apply the provider to every fill in the animation
+        let keypath = AnimationKeypath(keypath: "**.Fill 1.Color")
+        animationView.setValueProvider(fillProvider, keypath: keypath)
+
+        animationView.play()
+    }
+
+    @IBAction func tintButtonTapped(_ sender: Any) {
+        // Updating the provider's color is picked up on the next frame
+        fillProvider.color = LottieColor(r: 1.0, g: 0.3, b: 0.1, a: 1.0)
+    }
+}
+```
+
+<Tip>
+To remove a value provider and revert to the animation's original values, call `animationView.removeValueProvider(for: keypath)`.
+</Tip>

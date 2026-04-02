@@ -1,0 +1,165 @@
+---
+title: 'Reduced motion'
+description: 'Respect user accessibility preferences for reduced motion'
+---
+
+Lottie can automatically adapt animation playback when a user has enabled the system reduced motion accessibility setting. You can also override or extend this behavior for specific use cases such as snapshot testing.
+
+## How it works
+
+When an animation begins playing, Lottie reads the current `ReducedMotionMode` from `LottieConfiguration.shared.reducedMotionOption`. Depending on the mode, one of three behaviors applies:
+
+- **Standard motion** — animations play normally with no modifications.
+- **Reduced motion** — if the animation contains a marker named `"reduced motion"`, `"reducedMotion"`, or `"reduced_motion"` (case-insensitive), Lottie plays that marker instead of the full animation.
+- **Disabled motion** — animations do not play at all and render statically at their first frame.
+
+## `ReducedMotionOption`
+
+`ReducedMotionOption` is the type of `LottieConfiguration.reducedMotionOption`. It is either a fixed value or a dynamic provider that is evaluated each time an animation begins.
+
+```swift
+public enum ReducedMotionOption {
+    /// Always use the given ReducedMotionMode.
+    case specific(ReducedMotionMode)
+
+    /// Evaluate the given provider each time an animation begins.
+    case dynamic(ReducedMotionOptionProvider, dataID: AnyHashable)
+}
+```
+
+### Static convenience properties
+
+```swift
+extension ReducedMotionOption {
+    /// Animations always play normally.
+    public static var standardMotion: ReducedMotionOption
+
+    /// Animations always use reduced motion behavior.
+    public static var reducedMotion: ReducedMotionOption
+
+    /// Animations are always disabled and render statically.
+    public static var disabledMotion: ReducedMotionOption
+
+    /// Reads UIAccessibility.isReduceMotionEnabled each time an animation begins.
+    /// This is the default.
+    public static var systemReducedMotionToggle: ReducedMotionOption
+}
+```
+
+## `ReducedMotionMode`
+
+`ReducedMotionMode` is the resolved value that Lottie acts on:
+
+```swift
+public enum ReducedMotionMode: Hashable {
+    /// Play normally. Default when the system reduced motion setting is off.
+    case standardMotion
+
+    /// Play the "reduced motion" marker if present.
+    /// Default when UIAccessibility.isReduceMotionEnabled is true.
+    case reducedMotion
+
+    /// Do not play. Render statically at the first frame.
+    case disabledMotion
+}
+```
+
+## Default behavior
+
+By default, `LottieConfiguration.shared.reducedMotionOption` is `.systemReducedMotionToggle`. This uses `SystemReducedMotionOptionProvider`, which checks `UIAccessibility.isReduceMotionEnabled` each time an animation begins:
+
+```swift
+public struct SystemReducedMotionOptionProvider: ReducedMotionOptionProvider {
+    public var currentReducedMotionMode: ReducedMotionMode {
+        if UIAccessibility.isReduceMotionEnabled {
+            return .reducedMotion
+        } else {
+            return .standardMotion
+        }
+    }
+}
+```
+
+No configuration is required to get this behavior — it is active out of the box.
+
+## Setting the option globally
+
+Override the global default by assigning to `LottieConfiguration.shared.reducedMotionOption`:
+
+<CodeGroup>
+
+```swift Follow system setting (default)
+LottieConfiguration.shared.reducedMotionOption = .systemReducedMotionToggle
+```
+
+```swift Always use reduced motion
+LottieConfiguration.shared.reducedMotionOption = .reducedMotion
+```
+
+```swift Always play normally
+LottieConfiguration.shared.reducedMotionOption = .standardMotion
+```
+
+```swift Disable all animation
+// Useful for snapshot tests
+LottieConfiguration.shared.reducedMotionOption = .disabledMotion
+```
+
+</CodeGroup>
+
+## Setting the option per view
+
+Pass a custom `LottieConfiguration` to the `LottieAnimationView` initializer to override the global setting for a single view:
+
+```swift
+let config = LottieConfiguration(reducedMotionOption: .standardMotion)
+
+let animationView = LottieAnimationView(
+    name: "hero-animation",
+    configuration: config
+)
+```
+
+## Implementing a custom provider
+
+Implement `ReducedMotionOptionProvider` to supply your own dynamic logic — for example, reading from a feature flag or a user preference stored in your app:
+
+```swift
+final class AppReducedMotionProvider: ReducedMotionOptionProvider {
+    var currentReducedMotionMode: ReducedMotionMode {
+        if AppFeatureFlags.forceReducedMotion {
+            return .reducedMotion
+        }
+        if UIAccessibility.isReduceMotionEnabled {
+            return .reducedMotion
+        }
+        return .standardMotion
+    }
+}
+```
+
+Register the custom provider using `.dynamic`. Supply a stable `dataID` so that `LottieConfiguration`'s `Hashable` conformance works correctly:
+
+```swift
+let provider = AppReducedMotionProvider()
+
+LottieConfiguration.shared.reducedMotionOption = .dynamic(
+    provider,
+    dataID: ObjectIdentifier(AppReducedMotionProvider.self)
+)
+```
+
+## Adding reduced motion markers to animations
+
+To take advantage of `.reducedMotion` mode, add a named marker to your Lottie JSON file using your animation tool (e.g., After Effects with the Bodymovin plugin). Lottie recognises any of the following marker names (case-insensitive):
+
+- `reduced motion`
+- `reduced_motion`
+- `reduced-motion`
+- `reducedmotion`
+
+When `currentReducedMotionMode` resolves to `.reducedMotion` and a matching marker is found, Lottie plays only that marker's range instead of the full animation.
+
+<Tip>
+Design your "reduced motion" marker as a short, non-looping version of the animation — or a simple fade — so it remains meaningful while respecting the user's preference.
+</Tip>

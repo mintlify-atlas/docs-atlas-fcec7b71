@@ -1,0 +1,146 @@
+---
+title: "Loading animations"
+description: "Load animations from bundles, files, URLs, and data"
+---
+
+Lottie provides several ways to load a `LottieAnimation` model depending on where your animation JSON lives. Every loading method accepts an optional `animationCache` parameter that defaults to `LottieAnimationCache.shared`.
+
+## From a bundle
+
+Use `LottieAnimation.named(_:bundle:subdirectory:animationCache:)` to load a `.json` file bundled with your app. Pass the filename without the `.json` extension.
+
+```swift
+// Load "StarAnimation.json" from the main bundle
+let animation = LottieAnimation.named("StarAnimation")
+
+// Load from a specific bundle and subdirectory
+let animation = LottieAnimation.named(
+  "StarAnimation",
+  bundle: Bundle(for: MyClass.self),
+  subdirectory: "Animations"
+)
+```
+
+The method returns `nil` if the file cannot be found or decoded.
+
+## From a file path
+
+Use `LottieAnimation.filepath(_:animationCache:)` to load an animation from an absolute path on disk. This is useful when your app downloads animation files to a known location.
+
+```swift
+let documentsURL = FileManager.default.urls(
+  for: .documentDirectory,
+  in: .userDomainMask
+)[0]
+let filepath = documentsURL.appendingPathComponent("StarAnimation.json").path
+
+if let animation = LottieAnimation.filepath(filepath) {
+  animationView.animation = animation
+}
+```
+
+## From an asset catalog
+
+Use `LottieAnimation.asset(_:bundle:animationCache:)` to load an animation stored as a Data Asset in an `.xcassets` asset catalog.
+
+```swift
+let animation = LottieAnimation.asset("StarAnimation")
+
+// With an explicit bundle
+let animation = LottieAnimation.asset(
+  "StarAnimation",
+  bundle: Bundle(for: MyClass.self)
+)
+```
+
+## From Data
+
+Use `LottieAnimation.from(data:strategy:)` to decode a `LottieAnimation` directly from a `Data` object containing animation JSON. This method throws on failure.
+
+```swift
+do {
+  let data: Data = // ... loaded from network, disk, etc.
+  let animation = try LottieAnimation.from(data: data)
+  animationView.animation = animation
+} catch {
+  print("Failed to decode animation: \(error)")
+}
+```
+
+The optional `strategy` parameter controls how the JSON is parsed. It defaults to `LottieConfiguration.shared.decodingStrategy`. The available strategies are:
+
+| Strategy | Description |
+|---|---|
+| `.legacyCodable` | Uses `JSONDecoder` and Codable conformance |
+| `.dictionaryBased` | Uses `JSONSerialization` — generally faster |
+
+## From a URL
+
+<Tabs>
+  <Tab title="async/await">
+    Use the async overload of `LottieAnimation.loadedFrom(url:session:animationCache:)` in a Swift concurrency context. The task is automatically cancelled when the surrounding task is cancelled.
+
+    ```swift
+    let url = URL(string: "https://example.com/animations/star.json")!
+
+    let animation = await LottieAnimation.loadedFrom(url: url)
+    animationView.animation = animation
+    animationView.play()
+    ```
+  </Tab>
+  <Tab title="Callback">
+    Use `LottieAnimation.loadedFrom(url:session:closure:animationCache:)` when you need a callback-based approach. It returns a `URLSessionDataTask` you can use to cancel the request.
+
+    ```swift
+    let url = URL(string: "https://example.com/animations/star.json")!
+
+    let task = LottieAnimation.loadedFrom(url: url) { animation in
+      guard let animation else {
+        print("Failed to load animation")
+        return
+      }
+      animationView.animation = animation
+      animationView.play()
+    }
+
+    // Cancel the download if needed
+    task?.cancel()
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+Both URL loading methods call back on the main thread. If the animation is already in the cache, the closure is called synchronously and `nil` is returned instead of a task.
+</Note>
+
+## Animation cache
+
+All loading methods accept an `animationCache` parameter of type `AnimationCacheProvider?`. Using a cache avoids re-parsing the same JSON file multiple times.
+
+```swift
+public protocol AnimationCacheProvider: AnyObject, Sendable {
+  func animation(forKey: String) -> LottieAnimation?
+  func setAnimation(_ animation: LottieAnimation, forKey: String)
+  func clearCache()
+}
+```
+
+The default cache is `LottieAnimationCache.shared`, which uses `DefaultAnimationCache` — a thread-safe LRU cache that holds up to 100 animations and responds to memory pressure automatically.
+
+```swift
+// Adjust the cache size
+(LottieAnimationCache.shared as? DefaultAnimationCache)?.cacheSize = 50
+
+// Clear the cache entirely
+LottieAnimationCache.shared?.clearCache()
+
+// Disable caching for a specific load call
+let animation = LottieAnimation.named("StarAnimation", animationCache: nil)
+
+// Use a custom cache implementation
+LottieAnimationCache.shared = MyCustomCache()
+```
+
+<Tip>
+Pass `animationCache: nil` to bypass caching for large one-off animations that you don't want to keep in memory.
+</Tip>

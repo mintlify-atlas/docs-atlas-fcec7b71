@@ -1,0 +1,308 @@
+---
+title: "Custom providers"
+description: "Customize how Lottie resolves images, text layers, and fonts"
+---
+
+Lottie uses three provider protocols to resolve external resources referenced by an animation: images, text layer content, and fonts. Each has a built-in default implementation, and you can supply your own to load resources from any source.
+
+## Image providers
+
+### AnimationImageProvider protocol
+
+`AnimationImageProvider` is the protocol `LottieAnimationView` calls whenever it needs an image asset from the animation file.
+
+```swift
+public protocol AnimationImageProvider {
+  /// Whether Lottie may internally cache the result of `imageForAsset`. Defaults to `true`.
+  var cacheEligible: Bool { get }
+
+  /// Return the CGImage to display for the given asset, or `nil` to skip it.
+  func imageForAsset(asset: ImageAsset) -> CGImage?
+
+  /// Controls how the image is positioned within its layer bounds. Defaults to `.resize`.
+  func contentsGravity(for asset: ImageAsset) -> CALayerContentsGravity
+}
+```
+
+`ImageAsset` carries the asset's `name`, `directory`, and optional `base64Image` string as encoded in the animation JSON. Your implementation can use any combination of these to locate or generate the image.
+
+### Built-in providers
+
+Lottie ships two ready-made implementations.
+
+#### BundleImageProvider
+
+Loads images by name from a `Bundle`, with an optional subdirectory search path.
+
+```swift
+// Images in the main bundle
+let provider = BundleImageProvider(bundle: .main, searchPath: nil)
+
+// Images in a "Lotties/Images" subdirectory of a specific bundle
+let provider = BundleImageProvider(
+  bundle: Bundle(for: MyClass.self),
+  searchPath: "Lotties/Images"
+)
+
+animationView.imageProvider = provider
+```
+
+The provider first searches `searchPath + asset.directory`, then `searchPath` alone, then falls back to the bundle root.
+
+#### FilepathImageProvider
+
+Loads images from an absolute directory path on disk. Useful when animations are downloaded to a known location at runtime.
+
+```swift
+// From a string path
+let provider = FilepathImageProvider(filepath: "/path/to/images")
+
+// From a URL
+let images = FileManager.default.urls(
+  for: .documentDirectory,
+  in: .userDomainMask
+)[0].appendingPathComponent("AnimationImages")
+
+let provider = FilepathImageProvider(filepath: images)
+animationView.imageProvider = provider
+```
+
+### Writing a custom image provider
+
+Conform to `AnimationImageProvider` when you need to load images from a URL, an in-memory cache, or any other source. The type must also conform to `Equatable` when used with `LottieView` in SwiftUI.
+
+<Steps>
+  <Step title="Conform to AnimationImageProvider">
+    Implement `imageForAsset(asset:)`. Return `nil` to leave the asset blank.
+
+    ```swift
+    final class CachedImageProvider: AnimationImageProvider {
+      private let cache: NSCache<NSString, UIImage>
+
+      init(cache: NSCache<NSString, UIImage> = .init()) {
+        self.cache = cache
+      }
+
+      var cacheEligible: Bool { false } // We manage caching ourselves
+
+      func imageForAsset(asset: ImageAsset) -> CGImage? {
+        if let cached = cache.object(forKey: asset.name as NSString) {
+          return cached.cgImage
+        }
+
+        // Fall back to the main bundle
+        guard let image = UIImage(named: asset.name) else {
+          return nil
+        }
+
+        cache.setObject(image, forKey: asset.name as NSString)
+        return image.cgImage
+      }
+    }
+    ```
+  </Step>
+  <Step title="Attach the provider to LottieAnimationView">
+    Assign the provider before or after the animation loads.
+
+    ```swift
+    animationView.imageProvider = CachedImageProvider()
+    animationView.animation = LottieAnimation.named("Rocket")
+    animationView.play()
+    ```
+  </Step>
+  <Step title="Use the provider with LottieView in SwiftUI">
+    Add `Equatable` conformance so that `LottieView` can avoid unnecessary re-renders.
+
+    ```swift
+    extension CachedImageProvider: Equatable {
+      static func == (lhs: CachedImageProvider, rhs: CachedImageProvider) -> Bool {
+        lhs.cache === rhs.cache
+      }
+    }
+
+    LottieView(animation: .named("Rocket"))
+      .resizable()
+      .looping()
+      .imageProvider(CachedImageProvider())
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+Set `cacheEligible` to `false` if your provider manages its own caching, to prevent Lottie from holding a second copy of the image.
+</Tip>
+
+---
+
+## Text providers
+
+Text providers let you replace the static text baked into animation text layers with dynamic values at runtime.
+
+### AnimationKeypathTextProvider protocol
+
+```swift
+public protocol AnimationKeypathTextProvider: AnyObject {
+  /// Return the text to display for the given keypath, or `nil` to keep the animation's default text.
+  func text(for keypath: AnimationKeypath, sourceText: String) -> String?
+}
+```
+
+The `AnimationKeypath` identifies which text layer is being resolved. `sourceText` is the text value from the animation JSON.
+
+### Built-in text providers
+
+#### DefaultTextProvider
+
+Returns the animation's original text unchanged. This is the default when no provider is set.
+
+```swift
+animationView.textProvider = DefaultTextProvider()
+```
+
+#### DictionaryTextProvider
+
+Maps layer keypath strings to replacement strings. The dictionary key can be either the full keypath (e.g. `"MY_LAYER.text_value"`) or the final path component (e.g. `"text_value"`).
+
+```swift
+let provider = DictionaryTextProvider([
+  "Greeting.text_value": "Hello, world!",
+  "Score.text_value": "42 pts",
+])
+
+animationView.textProvider = provider
+```
+
+<Note>
+`DictionaryTextProvider` returns the `sourceText` unchanged for any keypath not present in the dictionary, so you only need to supply entries for layers you want to override.
+</Note>
+
+### Writing a custom text provider
+
+```swift
+final class LocalizedTextProvider: AnimationKeypathTextProvider {
+  func text(for keypath: AnimationKeypath, sourceText: String) -> String? {
+    // Use the last path component as a localization key
+    guard let key = keypath.keys.last else { return nil }
+    let localized = NSLocalizedString(key, comment: "")
+    // Return nil to keep the animation default when no translation is found
+    return localized == key ? nil : localized
+  }
+}
+
+animationView.textProvider = LocalizedTextProvider()
+```
+
+To use a custom text provider with `LottieView` in SwiftUI, add `Equatable` conformance:
+
+```swift
+extension LocalizedTextProvider: Equatable {
+  static func == (lhs: LocalizedTextProvider, rhs: LocalizedTextProvider) -> Bool {
+    true // stateless provider, always equal
+  }
+}
+
+LottieView(animation: .named("Score"))
+  .looping()
+  .textProvider(LocalizedTextProvider())
+```
+
+<Tip>
+Use `animationView.logHierarchyKeypaths()` during development to find the exact keypath strings for each text layer in your animation.
+</Tip>
+
+---
+
+## Font providers
+
+Font providers let you control which `CTFont` Lottie uses when rendering text layers that reference a font family.
+
+### AnimationFontProvider protocol
+
+```swift
+public protocol AnimationFontProvider {
+  /// Return the CTFont to use for the given family name and size, or `nil` to use the default.
+  func fontFor(family: String, size: CGFloat) -> CTFont?
+}
+```
+
+`family` is the font family name as specified in the animation JSON. Return `nil` to let Lottie fall back to its own resolution logic.
+
+### Built-in font provider
+
+#### DefaultFontProvider
+
+Creates a `CTFont` directly from the family name and size using `CTFontCreateWithName`. This is the default when no provider is set.
+
+```swift
+animationView.fontProvider = DefaultFontProvider()
+```
+
+### Writing a custom font provider
+
+Use a custom provider to substitute brand fonts or remap generic family names to specific typefaces registered in your app.
+
+```swift
+final class BrandFontProvider: AnimationFontProvider {
+  func fontFor(family: String, size: CGFloat) -> CTFont? {
+    // Map animation font family names to registered font names
+    let fontName: String
+    switch family {
+    case "Helvetica", "Arial":
+      fontName = "MyBrand-Regular"
+    case "Helvetica-Bold", "Arial-Bold":
+      fontName = "MyBrand-Bold"
+    default:
+      fontName = family
+    }
+
+    return CTFontCreateWithName(fontName as CFString, size, nil)
+  }
+}
+
+animationView.fontProvider = BrandFontProvider()
+```
+
+To use the provider with `LottieView` in SwiftUI, add `Equatable` conformance:
+
+```swift
+extension BrandFontProvider: Equatable {
+  static func == (lhs: BrandFontProvider, rhs: BrandFontProvider) -> Bool {
+    true // stateless provider, always equal
+  }
+}
+
+LottieView(animation: .named("Headline"))
+  .looping()
+  .fontProvider(BrandFontProvider())
+```
+
+---
+
+## Summary
+
+<CodeGroup>
+
+```swift UIKit — attach all three providers
+animationView.imageProvider = BundleImageProvider(
+  bundle: .main,
+  searchPath: "Lotties/Images"
+)
+animationView.textProvider = DictionaryTextProvider([
+  "Title.text_value": "Welcome back!",
+])
+animationView.fontProvider = BrandFontProvider()
+
+animationView.animation = LottieAnimation.named("Onboarding")
+animationView.play()
+```
+
+```swift SwiftUI — attach all three providers
+LottieView(animation: .named("Onboarding"))
+  .resizable()
+  .looping()
+  .imageProvider(BundleImageProvider(bundle: .main, searchPath: "Lotties/Images"))
+  .textProvider(DictionaryTextProvider(["Title.text_value": "Welcome back!"]))
+  .fontProvider(BrandFontProvider())
+```
+
+</CodeGroup>

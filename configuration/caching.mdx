@@ -1,0 +1,250 @@
+---
+title: 'Animation caching'
+description: 'Cache loaded animations for improved performance'
+---
+
+Lottie parses animation JSON files into `LottieAnimation` model objects. Caching these models avoids re-parsing the same file on every use and can significantly improve performance in lists, tab bars, or any UI that displays the same animation more than once.
+
+## Default cache
+
+`LottieAnimationCache.shared` is the global cache used by all loading methods when no explicit cache is supplied:
+
+```swift
+public enum LottieAnimationCache {
+    /// The animation cache used when loading LottieAnimation models.
+    /// Defaults to DefaultAnimationCache.sharedCache.
+    public static var shared: AnimationCacheProvider? = DefaultAnimationCache.sharedCache
+}
+```
+
+The underlying implementation is `DefaultAnimationCache` — a thread-safe LRU cache that holds up to 100 animations by default and automatically evicts entries in response to memory pressure:
+
+```swift
+public final class DefaultAnimationCache: AnimationCacheProvider {
+    /// The global shared cache instance.
+    public static let sharedCache = DefaultAnimationCache()
+
+    /// Maximum number of animations stored. Defaults to 100.
+    public var cacheSize: Int { get set }
+
+    /// Remove all cached animations.
+    public func clearCache()
+}
+```
+
+<Note>
+`LRUAnimationCache` is a deprecated alias for `DefaultAnimationCache`. Use `DefaultAnimationCache` directly in new code.
+</Note>
+
+## `AnimationCacheProvider` protocol
+
+All caches conform to `AnimationCacheProvider`:
+
+```swift
+public protocol AnimationCacheProvider: AnyObject, Sendable {
+    func animation(forKey: String) -> LottieAnimation?
+    func setAnimation(_ animation: LottieAnimation, forKey: String)
+    func clearCache()
+}
+```
+
+The cache key for bundle and filepath loaders is derived automatically from the path. For URL loaders it is `url.absoluteString`.
+
+## The `animationCache` parameter
+
+Every `LottieAnimation` loading method and every `LottieAnimationView` initializer accepts an `animationCache` parameter. It defaults to `LottieAnimationCache.shared`.
+
+<Tabs>
+  <Tab title="LottieAnimation loading">
+
+```swift
+// Named animation from a bundle
+let animation = LottieAnimation.named(
+    "confetti",
+    bundle: .main,
+    subdirectory: nil,
+    animationCache: LottieAnimationCache.shared // default
+)
+
+// Animation from a file path
+let animation = LottieAnimation.filepath(
+    "/path/to/animation.json",
+    animationCache: LottieAnimationCache.shared // default
+)
+
+// Animation from the asset catalog
+let animation = LottieAnimation.asset(
+    "StarAnimation",
+    bundle: .main,
+    animationCache: LottieAnimationCache.shared // default
+)
+
+// Animation loaded from a URL (async)
+let animation = await LottieAnimation.loadedFrom(
+    url: url,
+    animationCache: LottieAnimationCache.shared // default
+)
+
+// Animation loaded from a URL (closure)
+LottieAnimation.loadedFrom(
+    url: url,
+    closure: { animation in /* use animation */ },
+    animationCache: LottieAnimationCache.shared // default
+)
+```
+
+  </Tab>
+  <Tab title="LottieAnimationView initializers">
+
+```swift
+// From a bundle
+let view = LottieAnimationView(
+    name: "confetti",
+    animationCache: LottieAnimationCache.shared // default
+)
+
+// From a file path
+let view = LottieAnimationView(
+    filePath: "/path/to/animation.json",
+    animationCache: LottieAnimationCache.shared // default
+)
+
+// From a URL
+LottieAnimationView(
+    url: url,
+    closure: { error in /* handle */ },
+    animationCache: LottieAnimationCache.shared // default
+)
+
+// From the asset catalog
+let view = LottieAnimationView(
+    asset: "StarAnimation",
+    animationCache: LottieAnimationCache.shared // default
+)
+```
+
+  </Tab>
+</Tabs>
+
+## Adjusting cache size
+
+Change the maximum number of cached animations on `DefaultAnimationCache.sharedCache`:
+
+```swift
+// Increase the limit for animation-heavy screens
+DefaultAnimationCache.sharedCache.cacheSize = 200
+```
+
+## Clearing the cache
+
+Call `clearCache()` when you want to free memory immediately, such as when returning from an animation-heavy screen:
+
+```swift
+LottieAnimationCache.shared?.clearCache()
+```
+
+## Disabling caching
+
+Pass `nil` for `animationCache` to skip the cache entirely for a specific load. This is useful when you know the animation will be used only once, or when you need a fresh copy of the model:
+
+```swift
+// Skip cache for a one-off load
+let animation = LottieAnimation.named("confetti", animationCache: nil)
+
+// Skip cache for a specific view
+let view = LottieAnimationView(name: "confetti", animationCache: nil)
+```
+
+<Warning>
+Disabling the cache means the JSON file is parsed on every call. Avoid this on the main thread for large animation files or in tight loops such as `UITableView`/`UICollectionView` cell configuration.
+</Warning>
+
+## Implementing a custom cache
+
+Conform to `AnimationCacheProvider` to plug in your own storage — for example, an on-disk cache or one backed by a different eviction policy:
+
+```swift
+final class DiskAnimationCache: AnimationCacheProvider {
+    private let directory: URL
+
+    init(directory: URL) {
+        self.directory = directory
+    }
+
+    func animation(forKey key: String) -> LottieAnimation? {
+        let fileURL = cacheURL(for: key)
+        guard
+            let data = try? Data(contentsOf: fileURL),
+            let animation = try? LottieAnimation.from(data: data)
+        else { return nil }
+        return animation
+    }
+
+    func setAnimation(_ animation: LottieAnimation, forKey key: String) {
+        // Encode and write to disk as needed
+    }
+
+    func clearCache() {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    private func cacheURL(for key: String) -> URL {
+        let filename = key.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? key
+        return directory.appendingPathComponent(filename)
+    }
+}
+```
+
+Install the custom cache by replacing `LottieAnimationCache.shared`:
+
+```swift
+let cacheDirectory = FileManager.default
+    .urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    .appendingPathComponent("LottieAnimations")
+
+LottieAnimationCache.shared = DiskAnimationCache(directory: cacheDirectory)
+```
+
+All subsequent calls to loading methods that use the default cache will now use your implementation.
+
+## Controlling network requests
+
+`LottieConfiguration.defaultURLSession` determines how Lottie fetches remote animations. It defaults to `URLSession.shared` but can be replaced with any type conforming to `LottieURLSession`:
+
+```swift
+public protocol LottieURLSession: Sendable {
+    func lottieDataTask(
+        with url: URL,
+        completionHandler: @escaping @Sendable (Data?, URLResponse?, (any Error)?) -> Void
+    ) -> URLSessionDataTask?
+}
+```
+
+Replace the default session globally:
+
+```swift
+// Use a custom session with a longer timeout
+let config = URLSessionConfiguration.default
+config.timeoutIntervalForRequest = 30
+LottieConfiguration.defaultURLSession = URLSession(configuration: config)
+```
+
+A common use case is to provide a mock session during snapshot tests that returns pre-loaded data instead of making real network requests:
+
+```swift
+struct MockLottieURLSession: LottieURLSession {
+    let data: Data
+
+    func lottieDataTask(
+        with url: URL,
+        completionHandler: @escaping @Sendable (Data?, URLResponse?, (any Error)?) -> Void
+    ) -> URLSessionDataTask? {
+        completionHandler(data, nil, nil)
+        return nil
+    }
+}
+
+// In test setup
+LottieConfiguration.defaultURLSession = MockLottieURLSession(data: preloadedAnimationData)
+```

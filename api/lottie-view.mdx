@@ -1,0 +1,664 @@
+---
+title: "LottieView"
+description: "SwiftUI view for displaying Lottie animations"
+---
+
+`LottieView` is a SwiftUI wrapper around [`LottieAnimationView`](/api/lottie-animation-view) that brings Lottie animations into the SwiftUI view hierarchy. It supports synchronous and asynchronous animation loading, placeholder views, and a rich set of view modifiers for controlling playback.
+
+`LottieView` is a generic `struct` parameterized on `Placeholder: View` — a view shown while an animation loads asynchronously.
+
+```swift
+import Lottie
+import SwiftUI
+
+struct ContentView: View {
+  var body: some View {
+    LottieView(animation: .named("hello-world"))
+      .resizable()
+      .looping()
+  }
+}
+```
+
+<Note>
+  `LottieView` is only available on platforms that support SwiftUI (`#if canImport(SwiftUI)`). It requires iOS 13+, macOS 10.15+, tvOS 13+, or visionOS 1.0+.
+</Note>
+
+---
+
+## Initializers
+
+### `init(animation:)`
+
+Creates a `LottieView` from a pre-loaded `LottieAnimation`. The animation must be loaded before creating the view (synchronously, e.g. from a bundled JSON file).
+
+```swift
+// Load synchronously from the main bundle
+let animation = LottieAnimation.named("confetti")
+LottieView(animation: animation)
+  .resizable()
+  .playing()
+```
+
+<ParamField path="animation" type="LottieAnimation?" required>
+  A pre-decoded `LottieAnimation` to display. Pass `nil` to show an empty view (or placeholder, if configured).
+</ParamField>
+
+---
+
+### `init(dotLottieFile:)`
+
+Creates a `LottieView` from a pre-loaded `DotLottieFile`.
+
+<Warning>
+  Avoid combining this initializer with `SynchronouslyBlockingCurrentThread` APIs that decompress `.lottie` files on the calling thread. Prefer the async closure initializer instead.
+</Warning>
+
+```swift
+// Prefer the async version:
+LottieView {
+  try await DotLottieFile.named("party")
+}
+```
+
+<ParamField path="dotLottieFile" type="DotLottieFile?" required>
+  A pre-loaded `.lottie` file. Loop mode and speed are read from the file's embedded configuration.
+</ParamField>
+
+---
+
+### `init(_ loadAnimation:)` — async `LottieAnimation`
+
+Creates a `LottieView` that asynchronously loads a `LottieAnimation`. The closure is called exactly once in `onAppear`. Use `.reloadAnimationTrigger(_:)` to reload.
+
+```swift
+LottieView {
+  try await LottieAnimation.loadedFrom(url: myURL)
+}
+.resizable()
+.playing()
+```
+
+<ParamField path="loadAnimation" type="() async throws -> LottieAnimation?" required>
+  An async throwing closure that resolves to a `LottieAnimation`. Errors are logged and swallowed by the view.
+</ParamField>
+
+---
+
+### `init(_ loadAnimation:placeholder:)` — async with placeholder
+
+Like the above, but displays a placeholder view while the animation is loading.
+
+```swift
+LottieView {
+  try await LottieAnimation.loadedFrom(url: heroAnimationURL)
+} placeholder: {
+  ProgressView()
+}
+.resizable()
+.playing(loopMode: .loop)
+```
+
+<ParamField path="loadAnimation" type="() async throws -> LottieAnimation?" required>
+  Async closure that resolves to the animation.
+</ParamField>
+
+<ParamField path="placeholder" type="() -> Placeholder" required>
+  A `@ViewBuilder` closure producing the view shown while loading. Fades out once the animation is ready.
+</ParamField>
+
+---
+
+### `init(_ loadDotLottieFile:)` — async `DotLottieFile`
+
+Creates a `LottieView` that asynchronously loads a `DotLottieFile`. This is the recommended way to use `.lottie` files in SwiftUI.
+
+```swift
+LottieView {
+  try await DotLottieFile.named("splash")
+}
+.resizable()
+.looping()
+```
+
+<ParamField path="loadDotLottieFile" type="() async throws -> DotLottieFile?" required>
+  An async throwing closure that resolves to a `DotLottieFile`.
+</ParamField>
+
+---
+
+### `init(_ loadDotLottieFile:placeholder:)` — async `DotLottieFile` with placeholder
+
+```swift
+LottieView {
+  try await DotLottieFile.named("onboarding")
+} placeholder: {
+  Color.gray.opacity(0.1)
+    .clipShape(RoundedRectangle(cornerRadius: 12))
+}
+.resizable()
+.playing()
+```
+
+<ParamField path="loadDotLottieFile" type="() async throws -> DotLottieFile?" required>
+  Async closure that resolves to the `.lottie` file.
+</ParamField>
+
+<ParamField path="placeholder" type="() -> Placeholder" required>
+  View shown while the file is loading.
+</ParamField>
+
+---
+
+## View Modifiers
+
+All view modifiers return a new copy of `LottieView` with the configuration applied. They are composable and can be chained.
+
+### Sizing
+
+#### `.resizable()`
+
+Scales the animation to fill all space offered by the parent view, similar to `Image.resizable()`.
+
+```swift
+LottieView(animation: .named("logo"))
+  .resizable() // fills the frame
+  .frame(width: 200, height: 200)
+```
+
+---
+
+#### `.intrinsicSize()`
+
+Constrains the view to the animation's natural pixel dimensions, up to the proposed size from the parent. This is the default behavior.
+
+```swift
+LottieView(animation: .named("icon"))
+  .intrinsicSize() // uses the animation's own size
+```
+
+---
+
+### Playback
+
+#### `.playbackMode(_:)`
+
+Sets the `LottiePlaybackMode` for this view. This is the unified API for controlling whether an animation is playing or paused, and for configuring loop behavior.
+
+```swift
+// Loop from 0% to 100%
+LottieView(animation: .named("spinner"))
+  .resizable()
+  .playbackMode(.playing(.fromProgress(0, toProgress: 1, loopMode: .loop)))
+
+// Pause at a specific progress
+LottieView(animation: .named("progress-ring"))
+  .playbackMode(.paused(at: .progress(0.75)))
+```
+
+<ParamField path="playbackMode" type="LottiePlaybackMode" required>
+  The playback mode to apply.
+</ParamField>
+
+---
+
+#### `.playing()`
+
+Returns a copy of the view that plays once from the current frame to the end.
+
+```swift
+LottieView(animation: .named("success"))
+  .resizable()
+  .playing()
+```
+
+---
+
+#### `.playing(_ mode:)`
+
+Returns a copy of the view playing with the given `LottiePlaybackMode.PlaybackMode`.
+
+```swift
+LottieView(animation: .named("fireworks"))
+  .playing(.fromProgress(0, toProgress: 1, loopMode: .loop))
+```
+
+<ParamField path="mode" type="LottiePlaybackMode.PlaybackMode" required>
+  The specific playback range and loop mode.
+</ParamField>
+
+---
+
+#### `.playing(loopMode:)`
+
+Plays from the current frame to the end with the specified loop mode.
+
+```swift
+LottieView(animation: .named("rain"))
+  .resizable()
+  .playing(loopMode: .loop)
+```
+
+<ParamField path="loopMode" type="LottieLoopMode" required>
+  The loop behavior to apply.
+</ParamField>
+
+---
+
+#### `.looping()`
+
+Returns a copy that continuously loops the full animation (equivalent to `.playing(.fromProgress(0, toProgress: 1, loopMode: .loop))`).
+
+```swift
+LottieView(animation: .named("ambient"))
+  .resizable()
+  .looping()
+```
+
+---
+
+#### `.paused(at:)`
+
+Returns a copy of the view paused at a specific state.
+
+```swift
+// Pause at the start
+LottieView(animation: .named("toggle"))
+  .paused(at: .progress(0))
+
+// Pause at the current frame (default)
+LottieView(animation: .named("toggle"))
+  .paused()
+```
+
+<ParamField path="state" type="LottiePlaybackMode.PausedState" default=".currentFrame">
+  The state at which to pause. Options include `.currentFrame`, `.progress(_:)`, `.frame(_:)`, `.time(_:)`, and `.marker(_:position:)`.
+</ParamField>
+
+---
+
+#### `.animationSpeed(_:)`
+
+Sets the playback speed multiplier.
+
+```swift
+LottieView(animation: .named("explosion"))
+  .resizable()
+  .playing()
+  .animationSpeed(2.0) // double speed
+```
+
+<ParamField path="animationSpeed" type="Double" required>
+  Speed multiplier. `1.0` is normal speed, `2.0` is double speed, `-1.0` reverses playback.
+</ParamField>
+
+---
+
+#### `.currentProgress(_:)`
+
+Seeks to a progress value and pauses. If `nil`, does not modify the current playback state.
+
+```swift
+@State private var progress: AnimationProgressTime = 0.5
+
+LottieView(animation: .named("dial"))
+  .currentProgress(progress)
+```
+
+<ParamField path="currentProgress" type="AnimationProgressTime?" required>
+  Normalized position (0.0–1.0) to seek to.
+</ParamField>
+
+---
+
+#### `.currentFrame(_:)`
+
+Seeks to a specific frame and pauses. If `nil`, does not modify the current state.
+
+<ParamField path="currentFrame" type="AnimationFrameTime?" required>
+  The frame number to seek to.
+</ParamField>
+
+---
+
+#### `.currentTime(_:)`
+
+Seeks to a specific time in seconds and pauses. If `nil`, does not modify the current state.
+
+<ParamField path="currentTime" type="TimeInterval?" required>
+  Time in seconds to seek to.
+</ParamField>
+
+---
+
+### Configuration
+
+#### `.configure(_:)`
+
+Provides direct access to the underlying `LottieAnimationView` for setting any property not exposed as a dedicated modifier. The closure is called on every SwiftUI render pass.
+
+```swift
+LottieView(animation: .named("chart"))
+  .configure { view in
+    view.maskAnimationToBounds = false
+    view.viewportFrame = CGRect(x: 0, y: 0, width: 500, height: 300)
+  }
+```
+
+<ParamField path="configure" type="(LottieAnimationView) -> Void" required>
+  A closure receiving the `LottieAnimationView`. Applied on every `updateUIView` call.
+</ParamField>
+
+---
+
+#### `.configure(_:to:)` (keypath variant)
+
+Sets a specific `ReferenceWritableKeyPath` property on the `LottieAnimationView`. Skips re-applying if the value is `Equatable` and unchanged.
+
+```swift
+LottieView(animation: .named("demo"))
+  .configure(\.shouldRasterizeWhenIdle, to: true)
+```
+
+---
+
+#### `.backgroundBehavior(_:)`
+
+Configures the animation's behavior when the app moves to the background.
+
+```swift
+LottieView {
+  try await DotLottieFile.named("ambient")
+}
+.resizable()
+.looping()
+.backgroundBehavior(.continuePlaying) // Core Animation engine only
+```
+
+<ParamField path="value" type="LottieBackgroundBehavior" required>
+  One of `.stop`, `.pause`, `.pauseAndRestore`, `.forceFinish`, or `.continuePlaying`.
+</ParamField>
+
+---
+
+#### `.windowBackgroundBehavior(_:)`
+
+Overrides the background behavior specifically for window hierarchy changes (e.g., SwiftUI navigation transitions, `TabView`).
+
+```swift
+LottieView { try await DotLottieFile.named("idle") }
+  .looping()
+  .backgroundBehavior(.pauseAndRestore)
+  .windowBackgroundBehavior(.continuePlaying)
+```
+
+<ParamField path="value" type="LottieBackgroundBehavior?" required>
+  The behavior to use when the view leaves the window hierarchy. `nil` falls back to `backgroundBehavior`.
+</ParamField>
+
+---
+
+#### `.configuration(_:)`
+
+Updates the `LottieConfiguration` (rendering engine settings).
+
+```swift
+LottieView(animation: .named("complex"))
+  .resizable()
+  .configuration(LottieConfiguration(renderingEngine: .mainThread))
+```
+
+<ParamField path="configuration" type="LottieConfiguration" required>
+  The rendering configuration to apply.
+</ParamField>
+
+---
+
+#### `.imageProvider(_:)`
+
+Sets an `AnimationImageProvider` on the underlying view. Must be `Equatable` to prevent unnecessary re-renders.
+
+```swift
+LottieView(animation: .named("avatar"))
+  .imageProvider(MyCustomImageProvider())
+```
+
+<ParamField path="imageProvider" type="ImageProvider" required>
+  An `AnimationImageProvider & Equatable` instance.
+</ParamField>
+
+---
+
+#### `.textProvider(_:)`
+
+Sets an `AnimationKeypathTextProvider` on the underlying view. Must be `Equatable`.
+
+```swift
+struct LocalizedTextProvider: AnimationKeypathTextProvider, Equatable {
+  func text(for keypath: AnimationKeypath) -> String? {
+    NSLocalizedString(keypath.keys.last ?? "", comment: "")
+  }
+}
+
+LottieView(animation: .named("promo"))
+  .textProvider(LocalizedTextProvider())
+```
+
+---
+
+#### `.fontProvider(_:)`
+
+Sets an `AnimationFontProvider` on the underlying view. Must be `Equatable`.
+
+---
+
+#### `.valueProvider(_:for:)`
+
+Registers a value provider for a keypath on the underlying view. Must be `Equatable`.
+
+```swift
+LottieView(animation: .named("icon"))
+  .valueProvider(
+    ColorValueProvider(LottieColor(r: 0, g: 0.5, b: 1, a: 1)),
+    for: AnimationKeypath(keypath: "**.Fill.Color")
+  )
+```
+
+<ParamField path="valueProvider" type="ValueProvider" required>
+  An `AnyValueProvider & Equatable` instance.
+</ParamField>
+
+<ParamField path="for" type="AnimationKeypath" required>
+  The keypath to override.
+</ParamField>
+
+---
+
+### Loading & Reload
+
+#### `.reloadAnimationTrigger(_:showPlaceholder:)`
+
+Triggers a re-invocation of the async `loadAnimation` closure whenever the bound value changes. Only effective when the view was created with an async closure initializer.
+
+```swift
+@State private var animationID: Int = 0
+
+LottieView {
+  try await loadAnimation(id: animationID)
+} placeholder: {
+  ProgressView()
+}
+.resizable()
+.playing()
+.reloadAnimationTrigger(animationID, showPlaceholder: true)
+```
+
+<ParamField path="value" type="some Equatable" required>
+  Any `Equatable` value. When this changes, the load closure is called again.
+</ParamField>
+
+<ParamField path="showPlaceholder" type="Bool" default="true">
+  When `true`, the current animation is hidden and the placeholder is shown while the new animation loads. When `false`, the previous animation remains visible during loading.
+</ParamField>
+
+---
+
+#### `.animationDidLoad(_:)`
+
+Registers a closure called when the animation source finishes loading and is applied to the underlying view.
+
+```swift
+LottieView { try await DotLottieFile.named("hero") }
+  .animationDidLoad { source in
+    print("Loaded: \(source)")
+  }
+  .playing()
+```
+
+<ParamField path="animationDidLoad" type="(LottieAnimationSource) -> Void" required>
+  Called once after the animation is loaded.
+</ParamField>
+
+---
+
+#### `.animationDidFinish(_:)`
+
+Registers a `LottieCompletionBlock` called when a triggered animation completes.
+
+```swift
+LottieView(animation: .named("success"))
+  .playing()
+  .animationDidFinish { completed in
+    if completed { dismiss() }
+  }
+```
+
+<ParamField path="animationCompletionHandler" type="LottieCompletionBlock?" required>
+  Called when an animation finishes. `Bool` is `true` if it completed normally.
+</ParamField>
+
+---
+
+### Realtime Progress Observation
+
+#### `.getRealtimeAnimationProgress(_:)` (iOS 15+)
+
+Wraps the view in a `TimelineView` and updates a binding each frame with the current `realtimeAnimationProgress`. The `TimelineView` is paused when the binding is `nil`.
+
+<Warning>
+  This modifier triggers a state update on every frame, which can impact performance. Only use it when you need per-frame progress observation.
+</Warning>
+
+```swift
+@State private var progress: AnimationProgressTime = 0
+
+LottieView(animation: .named("countdown"))
+  .resizable()
+  .looping()
+  .getRealtimeAnimationProgress($progress)
+```
+
+<ParamField path="realtimeAnimationProgress" type="Binding<AnimationProgressTime>?" required>
+  A one-way binding updated each frame. Pass `nil` to pause the `TimelineView`.
+</ParamField>
+
+---
+
+#### `.getRealtimeAnimationFrame(_:)` (iOS 15+)
+
+Like `.getRealtimeAnimationProgress(_:)`, but binds to the raw `AnimationFrameTime` instead.
+
+```swift
+@State private var frame: AnimationFrameTime = 0
+
+LottieView(animation: .named("scrubber"))
+  .resizable()
+  .getRealtimeAnimationFrame($frame)
+```
+
+<ParamField path="realtimeAnimationFrame" type="Binding<AnimationFrameTime>?" required>
+  A one-way binding updated each frame with the current frame number.
+</ParamField>
+
+---
+
+### Accessibility
+
+#### `.accessibilityLabel(_:)`
+
+Sets the accessibility label on the underlying `LottieAnimationView`. When non-`nil`, the view becomes an accessibility element.
+
+```swift
+LottieView(animation: .named("loading"))
+  .looping()
+  .accessibilityLabel("Loading indicator")
+```
+
+<ParamField path="accessibilityLabel" type="String?" required>
+  The accessibility label. Pass `nil` to remove the label and mark the view as a non-accessibility element.
+</ParamField>
+
+---
+
+## Complete Example
+
+The following example shows async loading from a URL, a skeleton placeholder, looping playback, a per-frame progress binding, and a completion callback.
+
+```swift
+import Lottie
+import SwiftUI
+
+struct HeroAnimationView: View {
+  let url: URL
+  @State private var progress: AnimationProgressTime = 0
+  @State private var didFinish = false
+
+  var body: some View {
+    VStack {
+      LottieView {
+        try await LottieAnimation.loadedFrom(url: url)
+      } placeholder: {
+        RoundedRectangle(cornerRadius: 16)
+          .fill(Color.gray.opacity(0.15))
+          .overlay(ProgressView())
+      }
+      .resizable()
+      .playing(loopMode: .loop)
+      .animationSpeed(1.5)
+      .backgroundBehavior(.pauseAndRestore)
+      .getRealtimeAnimationProgress($progress)
+      .animationDidFinish { _ in didFinish = true }
+      .accessibilityLabel("Hero animation")
+      .frame(height: 300)
+
+      ProgressView(value: progress)
+        .padding(.horizontal)
+
+      if didFinish {
+        Text("Animation complete")
+      }
+    }
+  }
+}
+```
+
+---
+
+## DotLottie Configuration
+
+When using a `.lottie` file, Lottie can apply configuration values embedded in the file (loop mode, speed, image provider) alongside your own modifiers. Use `.dotLottieConfigurationComponents(_:)` to control which embedded values take precedence.
+
+```swift
+LottieView {
+  try await DotLottieFile.named("branded-animation")
+}
+.resizable()
+// Allow the .lottie file to override loop mode and speed,
+// but use our own image provider.
+.dotLottieConfigurationComponents([.loopMode, .animationSpeed])
+.playing()
+```
+
+<ParamField path="dotLottieConfigurationComponents" type="DotLottieConfigurationComponents" default=".imageProvider">
+  A set of `DotLottieConfigurationComponents` values specifying which fields from the embedded `DotLottieConfiguration` override the values provided via SwiftUI modifiers. Defaults to `[.imageProvider]`.
+</ParamField>

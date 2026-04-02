@@ -1,0 +1,254 @@
+---
+title: "LottieButton"
+description: "Animated button control powered by Lottie"
+---
+
+Lottie provides two complementary button types depending on your UI framework:
+
+- **`AnimatedButton`** — a `UIControl` / `NSControl` subclass for UIKit and AppKit
+- **`LottieButton`** — a SwiftUI `View` wrapper around `AnimatedButton`
+
+Both play a Lottie animation segment in response to user interaction, and let you map different progress ranges to different control events.
+
+## AnimatedButton (UIKit / AppKit)
+
+`AnimatedButton` extends `AnimatedControl`, which itself extends `UIControl` (iOS/tvOS) or `NSControl` (macOS). It embeds a `LottieAnimationView` that fills its bounds.
+
+### Initialisers
+
+<ParamField path="animation" type="LottieAnimation?" required>
+  The `LottieAnimation` to display. Pass `nil` to create the button without an animation and assign one later via the `animation` property.
+</ParamField>
+
+<ParamField path="configuration" type="LottieConfiguration" default="LottieConfiguration.shared">
+  Rendering engine and caching configuration. Defaults to the process-wide shared configuration.
+</ParamField>
+
+```swift
+let animation = LottieAnimation.named("checkmark")
+let button = AnimatedButton(animation: animation)
+```
+
+### Properties
+
+<ResponseField name="animationView" type="LottieAnimationView">
+  The underlying animation view. Access it to configure looping, speed, or dynamic value providers.
+</ResponseField>
+
+<ResponseField name="animation" type="LottieAnimation?">
+  The animation backing the control. Setting this replaces the animation and calls `animationDidSet()`.
+</ResponseField>
+
+<ResponseField name="animationSpeed" type="CGFloat">
+  Playback speed multiplier. Defaults to `1`. Forwarded to the underlying `animationView`.
+</ResponseField>
+
+<ResponseField name="performAction" type="(() -> Void)?">
+  A closure called when the button receives a `touchUpInside` event (equivalent to tapping the button). Set this instead of using `addTarget(_:action:for:)` when you prefer closure-based handling.
+</ResponseField>
+
+### Mapping animations to control events
+
+By default, `AnimatedButton` plays the full animation (progress `0.0` → `1.0`) when the user releases a tap inside the button (`touchUpInside`). Use `setPlayRange` to map any animation segment to any control event.
+
+```swift
+/// Sets the play range using normalised progress values (0.0 – 1.0).
+func setPlayRange(
+    fromProgress: AnimationProgressTime,
+    toProgress: AnimationProgressTime,
+    event: LottieControlEvent
+)
+
+/// Sets the play range using named markers defined in the After Effects composition.
+func setPlayRange(
+    fromMarker fromName: String,
+    toMarker toName: String,
+    event: LottieControlEvent
+)
+```
+
+<ParamField path="fromProgress" type="AnimationProgressTime" required>
+  Normalised start progress (`0.0`–`1.0`).
+</ParamField>
+
+<ParamField path="toProgress" type="AnimationProgressTime" required>
+  Normalised end progress (`0.0`–`1.0`).
+</ParamField>
+
+<ParamField path="event" type="LottieControlEvent" required>
+  The control event that triggers this segment. On iOS/tvOS this is `UIControl.Event`. On macOS it is `LottieNSControlEvent`.
+</ParamField>
+
+### Layer visibility per state
+
+`AnimatedControl` (the parent class) can show and hide named layers based on `UIControl.State` / `LottieNSControlState`.
+
+```swift
+/// Shows the given layer name when the control enters the given state.
+func setLayer(named: String, forState: LottieControlState)
+```
+
+### Dynamic properties
+
+```swift
+/// Registers a value provider for the given keypath on the animation view.
+func setValueProvider(_ valueProvider: AnyValueProvider, keypath: AnimationKeypath)
+
+/// Removes a previously registered value provider.
+func removeValueProvider(for keypath: AnimationKeypath)
+```
+
+### UIKit example
+
+```swift
+import Lottie
+import UIKit
+
+class ViewController: UIViewController {
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        guard let animation = LottieAnimation.named("like_button") else { return }
+        let button = AnimatedButton(animation: animation)
+        button.frame = CGRect(x: 100, y: 200, width: 120, height: 120)
+
+        // Play frames 0 → 0.5 on touch-down, 0.5 → 1.0 on release
+        button.setPlayRange(fromProgress: 0.0, toProgress: 0.5, event: .touchDown)
+        button.setPlayRange(fromProgress: 0.5, toProgress: 1.0, event: .touchUpInside)
+
+        // Respond to taps via closure
+        button.performAction = {
+            print("Button tapped!")
+        }
+
+        // Or via UIControl target-action
+        button.addTarget(self, action: #selector(buttonTapped), for: .touchUpInside)
+
+        view.addSubview(button)
+    }
+
+    @objc func buttonTapped() {
+        print("Button tapped via target-action")
+    }
+}
+```
+
+---
+
+## LottieButton (SwiftUI)
+
+`LottieButton` is a SwiftUI `View` that wraps `AnimatedButton`. It uses a modifier-chain API consistent with other Lottie SwiftUI views.
+
+<Note>
+`LottieButton` is only available on platforms that support SwiftUI (`#if canImport(SwiftUI)`). It is available on iOS 13+, macOS 10.15+, tvOS 13+, and visionOS 1.0+.
+</Note>
+
+### Initialiser
+
+<ParamField path="animation" type="LottieAnimation?" required>
+  The animation to display.
+</ParamField>
+
+<ParamField path="action" type="@escaping () -> Void" required>
+  A closure executed when the button is tapped.
+</ParamField>
+
+```swift
+LottieButton(animation: LottieAnimation.named("like_button")) {
+    print("Liked!")
+}
+```
+
+### Modifiers
+
+All modifiers return a new copy of the view (value-type semantics).
+
+#### `.animate(fromProgress:toProgress:on:)`
+
+Maps an animation segment to a control event.
+
+<ParamField path="fromProgress" type="AnimationProgressTime" required>
+  Normalised start progress.
+</ParamField>
+
+<ParamField path="toProgress" type="AnimationProgressTime" required>
+  Normalised end progress.
+</ParamField>
+
+<ParamField path="event" type="LottieControlEvent" required>
+  The control event that triggers the segment.
+</ParamField>
+
+```swift
+LottieButton(animation: animation, action: { })
+    .animate(fromProgress: 0.0, toProgress: 1.0, on: .touchUpInside)
+```
+
+#### `.animate(fromMarker:toMarker:on:)`
+
+Maps an animation segment identified by After Effects marker names.
+
+<ParamField path="fromMarker" type="String" required>
+  Name of the start marker in the After Effects composition.
+</ParamField>
+
+<ParamField path="toMarker" type="String" required>
+  Name of the end marker in the After Effects composition.
+</ParamField>
+
+<ParamField path="event" type="LottieControlEvent" required>
+  The triggering control event.
+</ParamField>
+
+```swift
+LottieButton(animation: animation, action: { })
+    .animate(fromMarker: "idle", toMarker: "pressed", on: .touchDown)
+    .animate(fromMarker: "pressed", toMarker: "idle", on: .touchUpInside)
+```
+
+#### `.configuration(_:)`
+
+<ParamField path="configuration" type="LottieConfiguration" required>
+  Overrides the rendering engine and caching settings for this button.
+</ParamField>
+
+#### `.valueProvider(_:for:)`
+
+Registers a value provider for the given keypath. The provider must be `Equatable` to avoid unnecessary re-renders.
+
+<ParamField path="valueProvider" type="AnyValueProvider & Equatable" required>
+  The value provider to register.
+</ParamField>
+
+<ParamField path="keypath" type="AnimationKeypath" required>
+  The animation keypath to target.
+</ParamField>
+
+#### `.configure(_:)`
+
+A low-level escape hatch that lets you call any method on the underlying `AnimatedButton`.
+
+<ParamField path="configure" type="@escaping (AnimatedButton) -> Void" required>
+  Called whenever the view is updated.
+</ParamField>
+
+### SwiftUI example
+
+```swift
+import Lottie
+import SwiftUI
+
+struct LikeButton: View {
+    @State private var liked = false
+    let animation = LottieAnimation.named("like_button")
+
+    var body: some View {
+        LottieButton(animation: animation) {
+            liked.toggle()
+        }
+        .animate(fromProgress: 0.0, toProgress: 1.0, on: .touchUpInside)
+        .frame(width: 100, height: 100)
+    }
+}
+```
